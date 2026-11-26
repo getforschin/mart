@@ -1,0 +1,14 @@
+# Deploy API from monorepo root (Railway default).
+# Prefer setting service Root Directory to "central-backend" in the Railway UI;
+# this file is a fallback so root deploys still work.
+
+[build]
+builder = "NIXPACKS"
+buildCommand = "npm ci --prefix central-backend && npm run build --prefix central-backend"
+
+[deploy]
+startCommand = "npm start --prefix central-backend"
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

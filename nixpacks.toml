@@ -1,0 +1,12 @@
+# Force Node 20 for Railway/Nixpacks when building from repo root
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci --prefix central-backend"]
+
+[phases.build]
+cmds = ["npm run build --prefix central-backend"]
+
+[start]
+cmd = "npm start --prefix central-backend"

@@ -3,7 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "description": "Multi-Tenant Offline-First Omnichannel Retail Ecosystem",
+  "packageManager": "npm@10.8.2",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
+    "build": "npm ci --prefix central-backend && npm run build --prefix central-backend",
+    "start": "npm start --prefix central-backend",
     "infra:up": "bash scripts/docker-up.sh",
     "infra:down": "docker compose down",
     "infra:logs": "docker compose logs -f",
@@ -11,6 +17,7 @@
     "backend:install": "npm install --prefix central-backend",
     "backend:build": "npm run build --prefix central-backend",
     "backend:seed": "npm run seed --prefix central-backend",
+    "import:stock": "python3 scripts/import-stock-sheet.py",
     "backend:start": "npm run start --prefix central-backend",
     "backend:dev": "npm run dev --prefix central-backend",
     "admin:dev": "npm run dev --prefix web-apps/admin-portal",
@@ -22,8 +29,5 @@
     "prod:down": "docker compose -f docker-compose.prod.yml --env-file .env.production down",
     "prod:logs": "docker compose -f docker-compose.prod.yml --env-file .env.production logs -f",
     "prod:ps": "docker compose -f docker-compose.prod.yml --env-file .env.production ps"
-  },
-  "engines": {
-    "node": ">=20.0.0"
   }
 }

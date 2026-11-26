@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+.git
+.cursor
+.claude
+.dev-logs
+data
+desktop-app
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.production.example
+*.log

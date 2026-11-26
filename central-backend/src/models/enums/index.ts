@@ -1,0 +1,113 @@
+export enum TenantStatus {
+  ACTIVE = 'ACTIVE',
+  SUSPENDED = 'SUSPENDED',
+  PROVISIONING = 'PROVISIONING',
+  DECOMMISSIONED = 'DECOMMISSIONED',
+}
+
+export enum UserRole {
+  SUPERADMIN = 'SUPERADMIN',
+  MART_ADMIN = 'MART_ADMIN',
+  STORE_MANAGER = 'STORE_MANAGER',
+  CASHIER = 'CASHIER',
+  DELIVERY_AGENT = 'DELIVERY_AGENT',
+  SALESMAN = 'SALESMAN',
+  CUSTOMER = 'CUSTOMER',
+}
+
+export enum FacilityType {
+  WAREHOUSE = 'WAREHOUSE',
+  RETAIL_STORE = 'RETAIL_STORE',
+}
+
+export enum PaymentChannel {
+  CASH = 'CASH',
+  CARD = 'CARD',
+  UPI = 'UPI',
+  WALLET = 'WALLET',
+  CREDIT = 'CREDIT',
+  MIXED = 'MIXED',
+}
+
+export enum OrderOriginSource {
+  OFFLINE_POS = 'OFFLINE_POS',
+  WEB_STOREFRONT = 'WEB_STOREFRONT',
+}
+
+export enum SyncEventType {
+  ORDER_INVOICE = 'ORDER_INVOICE',
+  WORKFORCE_ATTENDANCE = 'WORKFORCE_ATTENDANCE',
+}
+
+export enum SyncResultStatus {
+  ACCEPTED = 'ACCEPTED',
+  DUPLICATE = 'DUPLICATE',
+  REJECTED = 'REJECTED',
+}
+
+export enum PurchaseStatus {
+  DRAFT = 'DRAFT',
+  COMPLETED = 'COMPLETED',
+  RETURNED = 'RETURNED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum GstMode {
+  NON_GST = 'NON_GST',
+  EXCLUSIVE = 'EXCLUSIVE',
+  INCLUSIVE = 'INCLUSIVE',
+}
+
+export enum StockMovementType {
+  DUMP = 'DUMP',
+  AUDIT = 'AUDIT',
+  CONVERSION = 'CONVERSION',
+  CORRECTION = 'CORRECTION',
+  TRANSFER_OUT = 'TRANSFER_OUT',
+  TRANSFER_IN = 'TRANSFER_IN',
+  PURCHASE = 'PURCHASE',
+  SALE = 'SALE',
+  RETURN = 'RETURN',
+}
+
+export enum TransferStatus {
+  PENDING = 'PENDING',
+  IN_TRANSIT = 'IN_TRANSIT',
+  RECEIVED = 'RECEIVED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum SchemeType {
+  FREE_ITEM = 'FREE_ITEM',
+  DISCOUNT_ITEM = 'DISCOUNT_ITEM',
+  BILL_DISCOUNT = 'BILL_DISCOUNT',
+  PERCENT_OFF = 'PERCENT_OFF',
+}
+
+export enum AccountEntryType {
+  PAYMENT = 'PAYMENT',
+  RECEIPT = 'RECEIPT',
+  JOURNAL = 'JOURNAL',
+  CONTRA = 'CONTRA',
+  BILL = 'BILL',
+}
+
+export enum PartyType {
+  SUPPLIER = 'SUPPLIER',
+  CUSTOMER = 'CUSTOMER',
+  EMPLOYEE = 'EMPLOYEE',
+}
+
+export enum EcommerceOrderStatus {
+  PLACED = 'PLACED',
+  CONFIRMED = 'CONFIRMED',
+  PACKED = 'PACKED',
+  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
+  DELIVERED = 'DELIVERED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum SmsChannel {
+  SMS = 'SMS',
+  WHATSAPP = 'WHATSAPP',
+}

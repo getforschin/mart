@@ -1,0 +1,32 @@
+{
+  "entryFile": "src/server.ts",
+  "noImplicitAdditionalProperties": "throw-on-extras",
+  "controllerPathGlobs": ["src/controllers/**/*Controller.ts"],
+  "spec": {
+    "outputDirectory": "dist/swagger",
+    "specVersion": 3,
+    "name": "Mart Omnichannel Retail API",
+    "description": "Multi-Tenant Offline-First Omnichannel Retail & Lot-Based Inventory Ecosystem",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Enterprise Systems"
+    },
+    "securityDefinitions": {
+      "tenantHeader": {
+        "type": "apiKey",
+        "name": "X-Tenant-Id",
+        "in": "header"
+      },
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "routes": {
+    "routesDir": "src/routes",
+    "middleware": "express",
+    "authenticationModule": "src/core/security/authentication.ts"
+  }
+}

@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Builds
+dist/
+build/
+*.tsbuildinfo
+
+# Logs / local runtime
+.dev-logs/
+*.log
+npm-debug.log*
+
+# Local data / SQLite / caches
+data/
+*.db
+*.db-*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.claude/
+.cursor/
+
+# Electron
+desktop-app/out/
+desktop-app/release/
+
+# Coverage / misc
+coverage/
+.turbo/
+.tmp/

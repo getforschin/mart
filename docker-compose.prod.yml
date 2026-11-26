@@ -1,0 +1,117 @@
+# Production-style stack (VPS / single-node Docker)
+# Usage:
+#   cp .env.production.example .env.production
+#   # edit secrets + public URLs
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+    volumes:
+      - mart_pg_data:/var/lib/postgresql/data
+      - ./central-backend/scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks: [mart_internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - mart_redis_data:/data
+    networks: [mart_internal]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./central-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_NAME: ${DATABASE_NAME}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      LOG_LEVEL: info
+      # First deploy only — set false after schema exists
+      TYPEORM_SYNCHRONIZE: ${TYPEORM_SYNCHRONIZE:-true}
+      RUN_SEED_ON_START: ${RUN_SEED_ON_START:-false}
+    ports:
+      - "${API_PUBLISH_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [mart_internal, mart_public]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
+  admin:
+    build:
+      context: ./web-apps/admin-portal
+      args:
+        VITE_API_BASE_URL: ${PUBLIC_API_URL}
+        VITE_TENANT_ID: ${PUBLIC_TENANT_ID}
+        VITE_AUTH_TOKEN: ${PUBLIC_AUTH_TOKEN:-}
+    restart: unless-stopped
+    ports:
+      - "${ADMIN_PUBLISH_PORT:-8081}:80"
+    depends_on:
+      - api
+    networks: [mart_public]
+
+  storefront:
+    build:
+      context: ./web-apps/client-storefront
+      args:
+        VITE_API_BASE_URL: ${PUBLIC_API_URL}
+        VITE_TENANT_ID: ${PUBLIC_TENANT_ID}
+        VITE_FACILITY_ID: ${PUBLIC_FACILITY_ID}
+        VITE_TAX_RATE: ${PUBLIC_TAX_RATE:-18}
+    restart: unless-stopped
+    ports:
+      - "${STORE_PUBLISH_PORT:-8082}:80"
+    depends_on:
+      - api
+    networks: [mart_public]
+
+networks:
+  mart_internal:
+    driver: bridge
+  mart_public:
+    driver: bridge
+
+volumes:
+  mart_pg_data:
+  mart_redis_data:

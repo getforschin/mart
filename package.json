@@ -18,6 +18,8 @@
     "backend:build": "npm run build --prefix central-backend",
     "backend:seed": "npm run seed --prefix central-backend",
     "import:stock": "python3 scripts/import-stock-sheet.py",
+    "import:stock:railway": "python3 scripts/import-stock-sheet.py --railway",
+    "import:stock:railway-api": "python3 scripts/push-stock-to-railway.py",
     "backend:start": "npm run start --prefix central-backend",
     "backend:dev": "npm run dev --prefix central-backend",
     "admin:dev": "npm run dev --prefix web-apps/admin-portal",

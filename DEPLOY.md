@@ -150,7 +150,72 @@ Later: wire GitHub Actions (see `.github/workflows/ci.yml`) to SSH-deploy or pus
 
 ---
 
-## Path B — Step by step (PaaS sketch)
+## Path B — Railway (easy) step by step
+
+### 0. Push latest code (includes `central-backend/railway.toml`)
+
+```bash
+cd "/home/sachin/Documents/SELF MADE/mart"
+git add central-backend/railway.toml DEPLOY.md
+git commit -m "Add Railway deploy config for API"
+git push origin main
+```
+
+### 1. Create Railway project
+
+1. Open [https://railway.app](https://railway.app) → login with **GitHub**
+2. **New Project** → **Deploy from GitHub repo** → select `getforschin/mart`
+3. If asked for root directory / service settings, set later (step 3)
+
+### 2. Add Postgres + Redis in the same project
+
+1. Click **+ New** → **Database** → **Add PostgreSQL**
+2. Click **+ New** → **Database** → **Add Redis**
+3. Wait until both show **Online**
+
+### 3. Configure the API service
+
+1. Open the service that deployed from GitHub (or **+ New** → **GitHub Repo** → `mart` if missing)
+2. **Settings**:
+   - **Root Directory**: `central-backend`
+   - **Watch Paths** (optional): `central-backend/**`
+3. **Variables** → add:
+
+| Variable | Value |
+|----------|--------|
+| `NODE_ENV` | `production` |
+| `PORT` | `3000` |
+| `JWT_SECRET` | long random string |
+| `CORS_ORIGINS` | `*` (tighten later) |
+| `TYPEORM_SYNCHRONIZE` | `true` (first deploy only) |
+| `DATABASE_URL` | click **Add reference** → Postgres `DATABASE_URL` |
+| `REDIS_URL` | click **Add reference** → Redis `REDIS_URL` (or `REDIS_PUBLIC_URL`) |
+
+4. **Networking** → **Generate Domain** (gives `https://….up.railway.app`)
+
+### 4. Redeploy and verify
+
+1. **Deployments** → Redeploy if needed
+2. Open: `https://YOUR-API.up.railway.app/api/v1/health`
+3. Docs: `https://YOUR-API.up.railway.app/api/docs`
+
+If health fails, open **Deploy Logs** and check DB connection / build errors.
+
+### 5. After first successful boot
+
+1. Set `TYPEORM_SYNCHRONIZE=false`
+2. Redeploy
+3. Later set `CORS_ORIGINS` to your real admin/shop URLs
+
+### 6. Frontends next (Cloudflare Pages / Vercel)
+
+Build with:
+
+`VITE_API_BASE_URL=https://YOUR-API.up.railway.app`
+
+---
+
+## Path B — generic PaaS sketch
 
 ### 1. Create Postgres + Redis
 

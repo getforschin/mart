@@ -20,6 +20,7 @@ export const DEMO_FACILITY_ID = '00000000-0000-0000-0000-000000000002';
 export const DEMO_WAREHOUSE_ID = '00000000-0000-0000-0000-000000000004';
 export const DEMO_ADMIN_ID = '00000000-0000-0000-0000-000000000005';
 export const DEMO_CASHIER_ID = '00000000-0000-0000-0000-000000000003';
+export const DEMO_MANAGER_ID = '00000000-0000-0000-0000-000000000006';
 
 // Must be RFC-compliant UUIDs (uuid@9 rejects nil-variant namespaces).
 const PRODUCT_NS = '00000000-0000-4000-8000-00000000c001';
@@ -157,6 +158,17 @@ export class StockImportService {
           mobile: '9876543210',
           passwordHash,
           role: UserRole.CASHIER,
+          isActive: true,
+        },
+        {
+          id: DEMO_MANAGER_ID,
+          tenantId: DEMO_TENANT_ID,
+          email: 'manager@demo-mart.local',
+          username: 'manager',
+          fullName: 'Store Manager',
+          mobile: '9988776655',
+          passwordHash,
+          role: UserRole.STORE_MANAGER,
           isActive: true,
         },
       ] as const;

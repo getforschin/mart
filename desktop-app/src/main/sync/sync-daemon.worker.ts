@@ -16,6 +16,8 @@ interface UnsyncedPayload {
   attendanceRecords: Array<Record<string, unknown>>;
   customers: Array<Record<string, unknown>>;
   purchases: Array<Record<string, unknown>>;
+  supplierPayments: Array<Record<string, unknown>>;
+  expenses: Array<Record<string, unknown>>;
   stockEvents: Array<Record<string, unknown>>;
 }
 
@@ -89,6 +91,93 @@ async function checkConnectivity(): Promise<boolean> {
   }
 }
 
+function buildPushPayload(unsyncedData: UnsyncedPayload): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    tenantId: config.tenantId,
+    facilityId: config.facilityId,
+    deviceId: config.deviceId,
+  };
+  // Only include collections that have rows — older APIs reject unknown empty keys.
+  if (unsyncedData.invoices.length > 0) payload.invoices = unsyncedData.invoices;
+  if (unsyncedData.attendanceRecords.length > 0) {
+    payload.attendanceRecords = unsyncedData.attendanceRecords;
+  }
+  if (unsyncedData.customers.length > 0) payload.customers = unsyncedData.customers;
+  if (unsyncedData.purchases.length > 0) payload.purchases = unsyncedData.purchases;
+  if (unsyncedData.supplierPayments.length > 0) {
+    payload.supplierPayments = unsyncedData.supplierPayments;
+  }
+  if (unsyncedData.expenses.length > 0) payload.expenses = unsyncedData.expenses;
+  if (unsyncedData.stockEvents.length > 0) payload.stockEvents = unsyncedData.stockEvents;
+  return payload;
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function deleteAtPath(root: Record<string, unknown>, path: string): void {
+  const normalized = path.startsWith('body.') ? path.slice(5) : path;
+  const parts = normalized.split('.').filter(Boolean);
+  if (parts.length === 0) return;
+
+  // TSOA sometimes reports nested invoice-item paths as `items.$0.field`
+  // without the `invoices.$n` prefix — strip from every invoice item list.
+  if (parts[0] === 'items' && Array.isArray(root.invoices)) {
+    for (const invoice of root.invoices as Array<Record<string, unknown>>) {
+      deleteAtPath(invoice, parts.join('.'));
+    }
+    return;
+  }
+
+  let cursor: unknown = root;
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    const part = parts[i];
+    const indexMatch = /^\$(\d+)$/.exec(part);
+    if (indexMatch) {
+      if (!Array.isArray(cursor)) return;
+      cursor = cursor[Number(indexMatch[1])];
+      continue;
+    }
+    if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) return;
+    cursor = (cursor as Record<string, unknown>)[part];
+  }
+
+  const last = parts[parts.length - 1];
+  const lastIndex = /^\$(\d+)$/.exec(last);
+  if (lastIndex) {
+    if (Array.isArray(cursor)) cursor.splice(Number(lastIndex[1]), 1);
+    return;
+  }
+  if (cursor && typeof cursor === 'object' && !Array.isArray(cursor)) {
+    delete (cursor as Record<string, unknown>)[last];
+  }
+}
+
+function stripExcessProperties(
+  payload: Record<string, unknown>,
+  details: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const next = cloneJson(payload);
+  for (const path of Object.keys(details ?? {})) {
+    deleteAtPath(next, path);
+  }
+  return next;
+}
+
+function parseValidationDetails(body: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(body) as {
+      errorCode?: string;
+      details?: Record<string, unknown>;
+    };
+    if (parsed.errorCode === 'VALIDATION_ERROR' && parsed.details) return parsed.details;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 async function executeSyncCycle(
   unsyncedData: UnsyncedPayload,
   since: string | null,
@@ -128,27 +217,34 @@ async function executeSyncCycle(
       unsyncedData.attendanceRecords.length > 0 ||
       unsyncedData.customers.length > 0 ||
       unsyncedData.purchases.length > 0 ||
+      unsyncedData.supplierPayments.length > 0 ||
+      unsyncedData.expenses.length > 0 ||
       unsyncedData.stockEvents.length > 0;
 
     if (hasPush) {
       try {
-        const pushPayload = {
-          tenantId: config.tenantId,
-          facilityId: config.facilityId,
-          deviceId: config.deviceId,
-          invoices: unsyncedData.invoices,
-          attendanceRecords: unsyncedData.attendanceRecords,
-          customers: unsyncedData.customers,
-          purchases: unsyncedData.purchases,
-          stockEvents: unsyncedData.stockEvents,
-        };
+        let pushPayload = buildPushPayload(unsyncedData);
 
-        const response = await requestJson(
+        let response = await requestJson(
           'POST',
           `${config.apiBaseUrl}/api/v1/sync/push`,
           config.tenantId,
           pushPayload,
         );
+
+        // Production may lag local schema; strip rejected fields and retry once.
+        if (!response.ok && response.statusCode === 422) {
+          const details = parseValidationDetails(response.body);
+          if (details) {
+            pushPayload = stripExcessProperties(pushPayload, details);
+            response = await requestJson(
+              'POST',
+              `${config.apiBaseUrl}/api/v1/sync/push`,
+              config.tenantId,
+              pushPayload,
+            );
+          }
+        }
 
         if (!response.ok) {
           errors.push(`Sync push failed (${response.statusCode}): ${response.body}`);
@@ -166,11 +262,15 @@ async function executeSyncCycle(
         pushed = true;
         try {
           const parsed = JSON.parse(response.body) as {
-            results?: Array<{ clientEventId: string; status: string }>;
+            results?: Array<{ clientEventId: string; status: string; message?: string; eventType?: string }>;
           };
           for (const result of parsed.results ?? []) {
             if (result.status === 'ACCEPTED' || result.status === 'DUPLICATE') {
               acceptedIds.push(result.clientEventId);
+            } else if (result.status === 'REJECTED') {
+              const label = result.eventType ?? result.clientEventId;
+              const detail = result.message ?? 'rejected by server';
+              errors.push(`Sync rejected ${label}: ${detail}`);
             }
           }
         } catch {
@@ -179,6 +279,8 @@ async function executeSyncCycle(
             ...unsyncedData.attendanceRecords.map((i) => String(i.id)),
             ...unsyncedData.customers.map((i) => String(i.id)),
             ...unsyncedData.purchases.map((i) => String(i.id)),
+            ...unsyncedData.supplierPayments.map((i) => String(i.id)),
+            ...unsyncedData.expenses.map((i) => String(i.id)),
             ...unsyncedData.stockEvents.map((i) => String(i.id)),
           );
         }

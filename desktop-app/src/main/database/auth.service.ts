@@ -4,6 +4,9 @@ import { PosFacility, PosSession, UserRole } from '../../shared/types';
 
 const DEMO_FACILITY_ID = '00000000-0000-0000-0000-000000000002';
 const DEMO_CASHIER_ID = '00000000-0000-0000-0000-000000000003';
+/** Must match central seed managerId — never reuse warehouse id ...0004. */
+const DEMO_MANAGER_ID = '00000000-0000-0000-0000-000000000006';
+const LEGACY_MANAGER_ID = '00000000-0000-0000-0000-000000000004';
 
 export class AuthService {
   constructor(private readonly db: Database.Database) {}
@@ -179,12 +182,48 @@ export function seedAuthData(db: Database.Database): void {
     });
 
     insertUser.run({
-      id: '00000000-0000-0000-0000-000000000004',
+      id: DEMO_MANAGER_ID,
       username: 'manager',
       password_hash: managerHash,
       display_name: 'Store Manager',
       role: 'STORE_MANAGER',
       facility_id: DEMO_FACILITY_ID,
     });
+  } else {
+    // Older builds seeded manager as ...0004 (central warehouse id). Remap in place.
+    remapLegacyManagerId(db);
   }
+}
+
+export function remapLegacyManagerId(db: Database.Database): void {
+  const legacy = db
+    .prepare('SELECT id FROM pos_users WHERE id = @id')
+    .get({ id: LEGACY_MANAGER_ID }) as { id: string } | undefined;
+  if (!legacy) return;
+
+  const already = db
+    .prepare('SELECT id FROM pos_users WHERE id = @id')
+    .get({ id: DEMO_MANAGER_ID }) as { id: string } | undefined;
+  if (already) {
+    db.prepare('DELETE FROM pos_users WHERE id = @id').run({ id: LEGACY_MANAGER_ID });
+  } else {
+    db.prepare('UPDATE pos_users SET id = @next WHERE id = @prev').run({
+      next: DEMO_MANAGER_ID,
+      prev: LEGACY_MANAGER_ID,
+    });
+  }
+
+  db.prepare('UPDATE pos_sessions SET user_id = @next WHERE user_id = @prev').run({
+    next: DEMO_MANAGER_ID,
+    prev: LEGACY_MANAGER_ID,
+  });
+  db.prepare(
+    `UPDATE pos_config SET value = @next WHERE key = 'cashierId' AND value = @prev`,
+  ).run({ next: DEMO_MANAGER_ID, prev: LEGACY_MANAGER_ID });
+  db.prepare(
+    'UPDATE order_invoices_local SET cashier_id = @next WHERE cashier_id = @prev',
+  ).run({ next: DEMO_MANAGER_ID, prev: LEGACY_MANAGER_ID });
+  db.prepare(
+    'UPDATE workforce_attendance_local SET user_id = @next WHERE user_id = @prev',
+  ).run({ next: DEMO_MANAGER_ID, prev: LEGACY_MANAGER_ID });
 }

@@ -29,8 +29,8 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 function createMainWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: 1100,
+    height: 720,
     minWidth: 1024,
     minHeight: 700,
     title: 'CNP Mart POS',

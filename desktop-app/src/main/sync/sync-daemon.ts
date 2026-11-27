@@ -16,6 +16,16 @@ const EMPTY_COUNTS: SyncPendingCounts = {
   attendance: 0,
 };
 
+const LEGACY_LOCAL_MANAGER_ID = '00000000-0000-0000-0000-000000000004';
+const CENTRAL_MANAGER_ID = '00000000-0000-0000-0000-000000000006';
+const CENTRAL_CASHIER_ID = '00000000-0000-0000-0000-000000000003';
+
+/** Map local demo cashier ids that do not exist as users on central. */
+function resolveCashierIdForSync(cashierId: string): string {
+  if (cashierId === LEGACY_LOCAL_MANAGER_ID) return CENTRAL_MANAGER_ID;
+  return cashierId || CENTRAL_CASHIER_ID;
+}
+
 export class SyncDaemon {
   private worker: Worker | null = null;
   private mainWindow: BrowserWindow | null = null;
@@ -23,6 +33,8 @@ export class SyncDaemon {
   private pendingAttendanceIds: string[] = [];
   private pendingCustomerIds: string[] = [];
   private pendingPurchaseIds: string[] = [];
+  private pendingSupplierPaymentIds: string[] = [];
+  private pendingExpenseIds: string[] = [];
   private pendingStockEventIds: string[] = [];
   private syncInFlight = false;
 
@@ -153,6 +165,8 @@ export class SyncDaemon {
       const attendanceIds = this.pendingAttendanceIds.filter((id) => acceptedSet.has(id));
       const customerIds = this.pendingCustomerIds.filter((id) => acceptedSet.has(id));
       const purchaseIds = this.pendingPurchaseIds.filter((id) => acceptedSet.has(id));
+      const supplierPaymentIds = this.pendingSupplierPaymentIds.filter((id) => acceptedSet.has(id));
+      const expenseIds = this.pendingExpenseIds.filter((id) => acceptedSet.has(id));
       const stockIds = this.pendingStockEventIds.filter((id) => acceptedSet.has(id));
 
       if (
@@ -160,6 +174,8 @@ export class SyncDaemon {
           attendanceIds.length +
           customerIds.length +
           purchaseIds.length +
+          supplierPaymentIds.length +
+          expenseIds.length +
           stockIds.length >
         0
       ) {
@@ -168,6 +184,8 @@ export class SyncDaemon {
         posDatabaseService.markAttendanceSynced(attendanceIds);
         posDatabaseService.markCustomersSynced(customerIds);
         posDatabaseService.markPurchasesSynced(purchaseIds);
+        posDatabaseService.markSupplierPaymentsSynced(supplierPaymentIds);
+        posDatabaseService.markExpensesSynced(expenseIds);
         posDatabaseService.markStockEventsSynced(stockIds);
         posDatabaseService.setConfigValue('lastSyncAt', timestamp);
       }
@@ -227,6 +245,8 @@ export class SyncDaemon {
       this.pendingAttendanceIds = [];
       this.pendingCustomerIds = [];
       this.pendingPurchaseIds = [];
+      this.pendingSupplierPaymentIds = [];
+      this.pendingExpenseIds = [];
       this.pendingStockEventIds = [];
 
       this.broadcastSyncStatus({
@@ -270,6 +290,10 @@ export class SyncDaemon {
     const unsyncedAttendance = options.push ? posDatabaseService.getUnsyncedAttendance() : [];
     const unsyncedCustomers = options.push ? posDatabaseService.getUnsyncedCustomers() : [];
     const unsyncedPurchases = options.push ? posDatabaseService.getUnsyncedPurchases() : [];
+    const unsyncedSupplierPayments = options.push
+      ? posDatabaseService.getUnsyncedSupplierPayments()
+      : [];
+    const unsyncedExpenses = options.push ? posDatabaseService.getUnsyncedExpenses() : [];
     const unsyncedStockEvents = options.push ? posDatabaseService.getUnsyncedStockEvents() : [];
     const config = posDatabaseService.getConfig();
 
@@ -277,6 +301,8 @@ export class SyncDaemon {
     this.pendingAttendanceIds = unsyncedAttendance.map((att) => att.id);
     this.pendingCustomerIds = unsyncedCustomers.map((c) => String(c.id));
     this.pendingPurchaseIds = unsyncedPurchases.map((p) => String(p.id));
+    this.pendingSupplierPaymentIds = unsyncedSupplierPayments.map((p) => String(p.id));
+    this.pendingExpenseIds = unsyncedExpenses.map((e) => String(e.id));
     this.pendingStockEventIds = unsyncedStockEvents.map((e) => String(e.id));
 
     // If push requested but nothing pending and no pull, finish quickly
@@ -285,6 +311,8 @@ export class SyncDaemon {
         unsyncedAttendance.length +
         unsyncedCustomers.length +
         unsyncedPurchases.length +
+        unsyncedSupplierPayments.length +
+        unsyncedExpenses.length +
         unsyncedStockEvents.length >
       0;
     if (options.push && !options.pull && !hasPending) {
@@ -296,23 +324,41 @@ export class SyncDaemon {
       id: invoice.id,
       tenantId: invoice.tenantId,
       facilityId: invoice.facilityId,
-      cashierId: invoice.cashierId,
+      cashierId: resolveCashierIdForSync(String(invoice.cashierId)),
+      cashierName: invoice.cashierName,
       customerPayload: invoice.customerPayload,
+      invoiceNumber: invoice.invoiceNumber,
+      saleType: invoice.saleType,
+      status: invoice.status,
+      customerMobile: invoice.customerMobile,
       subtotal: invoice.subtotal,
+      taxableValue: invoice.taxableValue,
       taxTotal: invoice.taxTotal,
       discountTotal: invoice.discountTotal,
+      billDiscountPercent: invoice.billDiscountPercent,
+      redeemAmount: invoice.redeemAmount,
+      grossSale: invoice.grossSale,
+      roundOff: invoice.roundOff,
+      amountTendered: invoice.amountTendered,
+      changeDue: invoice.changeDue,
+      returnOfInvoiceId: invoice.returnOfInvoiceId,
       finalPayable: invoice.finalPayable,
       paymentChannel: invoice.paymentChannel,
       originSource: invoice.originSource,
       createdAt: invoice.createdAt,
       items: invoice.items.map((item) => ({
-        id: `${invoice.id}-${item.lotId}`,
+        id: item.lineId || `${invoice.id}-${item.lotId}`,
         productId: item.productId,
         lotId: item.lotId,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         calculatedTax: item.calculatedTax,
         netAmount: item.netAmount,
+        barcode: item.barcode,
+        batchNumber: item.batchNumber,
+        mrp: item.mrp,
+        discountPercent: item.discountPercent,
+        discountAmount: item.discountAmount,
       })),
     }));
 
@@ -351,19 +397,51 @@ export class SyncDaemon {
         remark: p.remark ? String(p.remark) : undefined,
         status: String(p.status ?? 'COMPLETED'),
         otherCharges: Number(p.other_charges ?? 0),
+        paidAmount: Number(p.paid_amount ?? 0),
+        paymentMode: p.payment_mode ? String(p.payment_mode) : undefined,
         items: items.map((item) => ({
-          productId: String(item.product_id),
+          productId: item.product_id ? String(item.product_id) : undefined,
           productName: String(item.product_name),
           barcode: item.barcode ? String(item.barcode) : undefined,
+          sku: item.sku ? String(item.sku) : undefined,
           quantity: Number(item.quantity),
           purchaseRate: Number(item.purchase_rate),
           mrp: Number(item.mrp),
           saleRate: Number(item.sale_rate),
           gstPercent: Number(item.gst_percent ?? 0),
           lotId: item.lot_id ? String(item.lot_id) : null,
+          isNewProduct: Number(item.is_new_product ?? 0) === 1,
         })),
       };
     });
+
+    const supplierPaymentPayloads = unsyncedSupplierPayments.map((p) => ({
+      id: String(p.id),
+      tenantId: String(p.tenant_id),
+      supplierId: String(p.supplier_id),
+      amount: Number(p.amount),
+      paymentMode: String(p.payment_mode ?? 'CASH'),
+      entryDate: String(p.entry_date),
+      remark: p.remark ? String(p.remark) : undefined,
+      referenceNo: p.reference_no ? String(p.reference_no) : String(p.id),
+    }));
+
+    const expensePayloads = unsyncedExpenses.map((e) => ({
+      id: String(e.id),
+      tenantId: String(e.tenant_id),
+      facilityId: e.facility_id ? String(e.facility_id) : undefined,
+      expenseDate: String(e.expense_date),
+      amount: Number(e.amount),
+      purpose: String(e.purpose),
+      category: String(e.category ?? 'MISC'),
+      paymentMode: e.payment_mode ? String(e.payment_mode) : undefined,
+      payee: e.payee ? String(e.payee) : undefined,
+      notes: e.notes ? String(e.notes) : undefined,
+      scheduleId: e.schedule_id ? String(e.schedule_id) : undefined,
+      periodKey: e.period_key ? String(e.period_key) : undefined,
+      isRecurringGenerated: Number(e.is_recurring_generated ?? 0) === 1,
+      createdBy: e.created_by ? String(e.created_by) : undefined,
+    }));
 
     const stockEventPayloads = unsyncedStockEvents.map((e) => ({
       id: String(e.id),
@@ -389,6 +467,8 @@ export class SyncDaemon {
         attendanceRecords: attendancePayloads,
         customers: customerPayloads,
         purchases: purchasePayloads,
+        supplierPayments: supplierPaymentPayloads,
+        expenses: expensePayloads,
         stockEvents: stockEventPayloads,
       },
       since: posDatabaseService.getConfigValue('lastPullAt') || null,

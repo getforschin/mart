@@ -40,6 +40,8 @@ const SCHEMA_DDL = `
     logged_in_at TEXT NOT NULL
   );
 
+  -- Columns is_synced/updated_at are added by runMigrations for existing DBs.
+  -- Do NOT create indexes on those columns here — CREATE INDEX would fail before migrations.
   CREATE TABLE IF NOT EXISTS pos_customers (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL,
@@ -47,9 +49,7 @@ const SCHEMA_DDL = `
     email TEXT,
     previous_due REAL NOT NULL DEFAULT 0,
     membership_card TEXT,
-    loyalty_points INTEGER NOT NULL DEFAULT 0,
-    is_synced INTEGER NOT NULL DEFAULT 0,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    loyalty_points INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS pos_suppliers (
@@ -58,8 +58,9 @@ const SCHEMA_DDL = `
     mobile TEXT,
     email TEXT,
     gstin TEXT,
+    outstanding_due REAL NOT NULL DEFAULT 0,
     is_synced INTEGER NOT NULL DEFAULT 0,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT ''
   );
 
   CREATE TABLE IF NOT EXISTS purchases_local (
@@ -76,8 +77,63 @@ const SCHEMA_DDL = `
     subtotal REAL NOT NULL DEFAULT 0,
     tax_total REAL NOT NULL DEFAULT 0,
     grand_total REAL NOT NULL DEFAULT 0,
+    paid_amount REAL NOT NULL DEFAULT 0,
+    due_amount REAL NOT NULL DEFAULT 0,
+    payment_status TEXT NOT NULL DEFAULT 'UNPAID',
+    payment_mode TEXT,
     is_synced INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS supplier_payments_local (
+    id TEXT PRIMARY KEY NOT NULL,
+    tenant_id TEXT NOT NULL,
+    supplier_id TEXT NOT NULL,
+    amount REAL NOT NULL,
+    payment_mode TEXT NOT NULL,
+    entry_date TEXT NOT NULL,
+    remark TEXT,
+    reference_no TEXT,
+    is_synced INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS expenses_local (
+    id TEXT PRIMARY KEY NOT NULL,
+    tenant_id TEXT NOT NULL,
+    facility_id TEXT,
+    expense_date TEXT NOT NULL,
+    amount REAL NOT NULL,
+    purpose TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'MISC',
+    payment_mode TEXT,
+    payee TEXT,
+    notes TEXT,
+    is_recurring_generated INTEGER NOT NULL DEFAULT 0,
+    schedule_id TEXT,
+    period_key TEXT,
+    created_by TEXT,
+    is_synced INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS expense_schedules_local (
+    id TEXT PRIMARY KEY NOT NULL,
+    tenant_id TEXT NOT NULL,
+    facility_id TEXT,
+    purpose TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'MISC',
+    amount REAL NOT NULL,
+    day_of_month INTEGER NOT NULL,
+    payment_mode TEXT,
+    payee TEXT,
+    notes TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    start_month TEXT,
+    end_month TEXT,
+    is_synced INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS purchase_items_local (
@@ -86,12 +142,14 @@ const SCHEMA_DDL = `
     product_id TEXT NOT NULL,
     product_name TEXT NOT NULL,
     barcode TEXT,
+    sku TEXT,
     quantity INTEGER NOT NULL,
     purchase_rate REAL NOT NULL,
     mrp REAL NOT NULL,
     sale_rate REAL NOT NULL,
     gst_percent REAL NOT NULL DEFAULT 0,
     lot_id TEXT,
+    is_new_product INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (purchase_id) REFERENCES purchases_local(id) ON DELETE CASCADE
   );
 
@@ -109,10 +167,6 @@ const SCHEMA_DDL = `
     is_synced INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
-
-  CREATE INDEX IF NOT EXISTS idx_customers_is_synced ON pos_customers(is_synced);
-  CREATE INDEX IF NOT EXISTS idx_purchases_is_synced ON purchases_local(is_synced);
-  CREATE INDEX IF NOT EXISTS idx_stock_events_is_synced ON stock_events_local(is_synced);
 
   CREATE TABLE IF NOT EXISTS invoice_counter (
     facility_id TEXT PRIMARY KEY NOT NULL,
@@ -168,12 +222,41 @@ const SCHEMA_DDL = `
     final_payable REAL NOT NULL,
     payment_channel TEXT NOT NULL,
     coupon_code TEXT,
+    bill_discount_percent REAL NOT NULL DEFAULT 0,
+    amount_tendered REAL NOT NULL DEFAULT 0,
+    change_due REAL NOT NULL DEFAULT 0,
+    return_of_invoice_id TEXT,
     origin_source TEXT NOT NULL DEFAULT 'OFFLINE_POS',
     is_synced INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
 
-  CREATE INDEX IF NOT EXISTS idx_invoices_is_synced ON order_invoices_local(is_synced);
+  CREATE TABLE IF NOT EXISTS stocktake_sessions_local (
+    id TEXT PRIMARY KEY NOT NULL,
+    tenant_id TEXT NOT NULL,
+    facility_id TEXT NOT NULL,
+    started_by TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'IN_PROGRESS',
+    remark TEXT,
+    committed_at TEXT,
+    is_synced INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS stocktake_lines_local (
+    id TEXT PRIMARY KEY NOT NULL,
+    session_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    lot_id TEXT NOT NULL,
+    expected_qty INTEGER NOT NULL,
+    counted_qty INTEGER,
+    remark TEXT,
+    FOREIGN KEY (session_id) REFERENCES stocktake_sessions_local(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_stocktake_lines_session ON stocktake_lines_local(session_id);
+
   CREATE INDEX IF NOT EXISTS idx_invoices_invoice_number ON order_invoices_local(invoice_number);
 
   CREATE TABLE IF NOT EXISTS order_items_local (
@@ -216,7 +299,6 @@ const SCHEMA_DDL = `
     is_synced INTEGER NOT NULL DEFAULT 0
   );
 
-  CREATE INDEX IF NOT EXISTS idx_attendance_is_synced ON workforce_attendance_local(is_synced);
 `;
 
 function columnExists(db: Database.Database, table: string, column: string): boolean {
@@ -241,15 +323,83 @@ function runMigrations(db: Database.Database): void {
     { table: 'order_invoices_local', column: 'gross_sale', ddl: 'ALTER TABLE order_invoices_local ADD COLUMN gross_sale REAL NOT NULL DEFAULT 0' },
     { table: 'order_invoices_local', column: 'round_off', ddl: 'ALTER TABLE order_invoices_local ADD COLUMN round_off REAL NOT NULL DEFAULT 0' },
     { table: 'order_invoices_local', column: 'coupon_code', ddl: 'ALTER TABLE order_invoices_local ADD COLUMN coupon_code TEXT' },
+    { table: 'order_invoices_local', column: 'bill_discount_percent', ddl: 'ALTER TABLE order_invoices_local ADD COLUMN bill_discount_percent REAL NOT NULL DEFAULT 0' },
+    { table: 'order_invoices_local', column: 'amount_tendered', ddl: 'ALTER TABLE order_invoices_local ADD COLUMN amount_tendered REAL NOT NULL DEFAULT 0' },
+    { table: 'order_invoices_local', column: 'change_due', ddl: 'ALTER TABLE order_invoices_local ADD COLUMN change_due REAL NOT NULL DEFAULT 0' },
+    { table: 'order_invoices_local', column: 'return_of_invoice_id', ddl: 'ALTER TABLE order_invoices_local ADD COLUMN return_of_invoice_id TEXT' },
     { table: 'pos_customers', column: 'is_synced', ddl: 'ALTER TABLE pos_customers ADD COLUMN is_synced INTEGER NOT NULL DEFAULT 0' },
-    { table: 'pos_customers', column: 'updated_at', ddl: 'ALTER TABLE pos_customers ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime(\'now\'))' },
+    { table: 'pos_customers', column: 'updated_at', ddl: 'ALTER TABLE pos_customers ADD COLUMN updated_at TEXT NOT NULL DEFAULT \'\'' },
+    { table: 'purchases_local', column: 'paid_amount', ddl: 'ALTER TABLE purchases_local ADD COLUMN paid_amount REAL NOT NULL DEFAULT 0' },
+    { table: 'purchases_local', column: 'due_amount', ddl: 'ALTER TABLE purchases_local ADD COLUMN due_amount REAL NOT NULL DEFAULT 0' },
+    { table: 'purchases_local', column: 'payment_status', ddl: 'ALTER TABLE purchases_local ADD COLUMN payment_status TEXT NOT NULL DEFAULT \'UNPAID\'' },
+    { table: 'purchases_local', column: 'payment_mode', ddl: 'ALTER TABLE purchases_local ADD COLUMN payment_mode TEXT' },
+    { table: 'pos_suppliers', column: 'outstanding_due', ddl: 'ALTER TABLE pos_suppliers ADD COLUMN outstanding_due REAL NOT NULL DEFAULT 0' },
+    { table: 'purchase_items_local', column: 'sku', ddl: 'ALTER TABLE purchase_items_local ADD COLUMN sku TEXT' },
+    {
+      table: 'purchase_items_local',
+      column: 'is_new_product',
+      ddl: 'ALTER TABLE purchase_items_local ADD COLUMN is_new_product INTEGER NOT NULL DEFAULT 0',
+    },
+    {
+      table: 'pos_customers',
+      column: 'created_at',
+      ddl: 'ALTER TABLE pos_customers ADD COLUMN created_at TEXT NOT NULL DEFAULT \'\'',
+    },
   ];
 
   for (const migration of migrations) {
     if (!columnExists(db, migration.table, migration.column)) {
-      db.exec(migration.ddl);
+      try {
+        db.exec(migration.ddl);
+        console.log(`[Main] Migrated ${migration.table}.${migration.column}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[Main] Migration failed ${migration.table}.${migration.column}:`, message);
+        throw error;
+      }
     }
   }
+
+  // Backfill customer created_at once the column exists
+  try {
+    db.exec(
+      `UPDATE pos_customers
+       SET created_at = CASE
+         WHEN created_at IS NULL OR created_at = '' THEN COALESCE(NULLIF(updated_at, ''), datetime('now'))
+         ELSE created_at
+       END`,
+    );
+  } catch {
+    /* ignore if table missing on first boot */
+  }
+
+  // Demo seed customers used non-UUID ids (cust-001..) before is_synced existed (DEFAULT 0).
+  // Central Customer.id is uuid — these can never sync. Keep them local-only.
+  try {
+    db.exec(
+      `UPDATE pos_customers
+       SET is_synced = 1
+       WHERE is_synced = 0
+         AND (
+           id LIKE 'cust-%'
+           OR length(id) <> 36
+           OR id NOT LIKE '________-____-____-____-____________'
+         )`,
+    );
+  } catch {
+    /* ignore */
+  }
+
+  // Indexes that require migrated columns — safe only after ALTER TABLE
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_customers_is_synced ON pos_customers(is_synced);
+    CREATE INDEX IF NOT EXISTS idx_purchases_is_synced ON purchases_local(is_synced);
+    CREATE INDEX IF NOT EXISTS idx_stock_events_is_synced ON stock_events_local(is_synced);
+    CREATE INDEX IF NOT EXISTS idx_invoices_is_synced ON order_invoices_local(is_synced);
+    CREATE INDEX IF NOT EXISTS idx_attendance_is_synced ON workforce_attendance_local(is_synced);
+    CREATE INDEX IF NOT EXISTS idx_supplier_payments_is_synced ON supplier_payments_local(is_synced);
+    CREATE INDEX IF NOT EXISTS idx_expenses_is_synced ON expenses_local(is_synced);
+  `);
 }
 
 export function getDatabasePath(): string {
@@ -352,15 +502,8 @@ function seedDefaultConfig(db: Database.Database): void {
 }
 
 function seedSampleCustomers(db: Database.Database): void {
-  const count = db.prepare('SELECT COUNT(*) AS count FROM pos_customers').get() as { count: number };
-  if (count.count === 0) {
-    db.prepare(
-      `INSERT INTO pos_customers (id, name, mobile, email, previous_due, membership_card, loyalty_points, is_synced)
-       VALUES ('cust-001', 'Walk-in Customer', '9999999999', NULL, 0, NULL, 0, 1),
-              ('cust-002', 'Rahul Sharma', '9876543210', 'rahul@example.com', 450.00, 'MEM-1001', 120, 1),
-              ('cust-003', 'Priya Patel', '9123456780', NULL, 0, 'MEM-1002', 340, 1)`,
-    ).run();
-  }
+  // Do not seed demo customers — non-UUID ids / shared mobiles collide with central pull
+  // (UNIQUE pos_customers.mobile) and previously stuck the sync outbox.
 
   const supplierCount = db.prepare('SELECT COUNT(*) AS count FROM pos_suppliers').get() as { count: number };
   if (supplierCount.count === 0) {

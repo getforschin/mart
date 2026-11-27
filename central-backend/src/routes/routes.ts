@@ -56,7 +56,7 @@ const models: TsoaRoute.Models = {
         "dataType": "refObject",
         "properties": {
             "clientEventId": {"dataType":"string","required":true},
-            "eventType": {"dataType":"union","subSchemas":[{"dataType":"enum","enums":["ORDER_INVOICE"]},{"dataType":"enum","enums":["WORKFORCE_ATTENDANCE"]}],"required":true},
+            "eventType": {"dataType":"union","subSchemas":[{"dataType":"enum","enums":["ORDER_INVOICE"]},{"dataType":"enum","enums":["WORKFORCE_ATTENDANCE"]},{"dataType":"enum","enums":["CUSTOMER"]},{"dataType":"enum","enums":["PURCHASE"]},{"dataType":"enum","enums":["STOCK_EVENT"]}],"required":true},
             "status": {"ref":"SyncResultStatus","required":true},
             "message": {"dataType":"string","required":true},
         },
@@ -162,14 +162,148 @@ const models: TsoaRoute.Models = {
         "additionalProperties": false,
     },
     // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "SyncCustomerDto": {
+        "dataType": "refObject",
+        "properties": {
+            "id": {"dataType":"string","required":true},
+            "tenantId": {"dataType":"string","required":true},
+            "name": {"dataType":"string","required":true},
+            "mobile": {"dataType":"string","required":true},
+            "email": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}]},
+            "previousDue": {"dataType":"double"},
+            "membershipCard": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}]},
+            "loyaltyPoints": {"dataType":"double"},
+            "updatedAt": {"dataType":"string","required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "SyncPurchaseItemDto": {
+        "dataType": "refObject",
+        "properties": {
+            "productId": {"dataType":"string","required":true},
+            "productName": {"dataType":"string","required":true},
+            "barcode": {"dataType":"string"},
+            "quantity": {"dataType":"double","required":true},
+            "purchaseRate": {"dataType":"double","required":true},
+            "mrp": {"dataType":"double","required":true},
+            "saleRate": {"dataType":"double","required":true},
+            "gstPercent": {"dataType":"double"},
+            "lotId": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}]},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "SyncPurchaseDto": {
+        "dataType": "refObject",
+        "properties": {
+            "id": {"dataType":"string","required":true},
+            "tenantId": {"dataType":"string","required":true},
+            "facilityId": {"dataType":"string","required":true},
+            "supplierId": {"dataType":"string","required":true},
+            "invoiceNumber": {"dataType":"string"},
+            "invoiceDate": {"dataType":"string","required":true},
+            "gstMode": {"dataType":"string"},
+            "remark": {"dataType":"string"},
+            "status": {"dataType":"string"},
+            "otherCharges": {"dataType":"double"},
+            "items": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncPurchaseItemDto"},"required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "SyncStockEventDto": {
+        "dataType": "refObject",
+        "properties": {
+            "id": {"dataType":"string","required":true},
+            "tenantId": {"dataType":"string","required":true},
+            "facilityId": {"dataType":"string","required":true},
+            "eventType": {"dataType":"union","subSchemas":[{"dataType":"enum","enums":["DUMP"]},{"dataType":"enum","enums":["CORRECTION"]},{"dataType":"enum","enums":["TRANSFER"]}],"required":true},
+            "productId": {"dataType":"string","required":true},
+            "lotId": {"dataType":"string","required":true},
+            "quantity": {"dataType":"double","required":true},
+            "newQuantity": {"dataType":"double"},
+            "toFacilityId": {"dataType":"string"},
+            "remark": {"dataType":"string"},
+            "createdAt": {"dataType":"string","required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
     "SyncPushRequestDto": {
         "dataType": "refObject",
         "properties": {
             "tenantId": {"dataType":"string","required":true},
             "facilityId": {"dataType":"string","required":true},
             "deviceId": {"dataType":"string","required":true},
-            "invoices": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncOrderInvoiceDto"},"required":true},
-            "attendanceRecords": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncAttendanceDto"},"required":true},
+            "invoices": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncOrderInvoiceDto"}},
+            "attendanceRecords": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncAttendanceDto"}},
+            "customers": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncCustomerDto"}},
+            "purchases": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncPurchaseDto"}},
+            "stockEvents": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncStockEventDto"}},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "SyncPullCustomerDto": {
+        "dataType": "refObject",
+        "properties": {
+            "id": {"dataType":"string","required":true},
+            "name": {"dataType":"string","required":true},
+            "mobile": {"dataType":"string","required":true},
+            "email": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "previousDue": {"dataType":"double","required":true},
+            "membershipCard": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "loyaltyPoints": {"dataType":"double","required":true},
+            "updatedAt": {"dataType":"string","required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "SyncPullLotDto": {
+        "dataType": "refObject",
+        "properties": {
+            "id": {"dataType":"string","required":true},
+            "productId": {"dataType":"string","required":true},
+            "productName": {"dataType":"string","required":true},
+            "productSku": {"dataType":"string","required":true},
+            "baseBarcode": {"dataType":"string","required":true},
+            "company": {"dataType":"string","required":true},
+            "size": {"dataType":"string","required":true},
+            "color": {"dataType":"string","required":true},
+            "hsnCode": {"dataType":"string","required":true},
+            "batchNumber": {"dataType":"string","required":true},
+            "costPrice": {"dataType":"double","required":true},
+            "mrp": {"dataType":"double","required":true},
+            "saleRate": {"dataType":"double","required":true},
+            "manufactureDate": {"dataType":"string","required":true},
+            "expiryDate": {"dataType":"string","required":true},
+            "lotBarcode": {"dataType":"string","required":true},
+            "quantityOnHand": {"dataType":"double","required":true},
+            "aisleShelfLocation": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "facilityId": {"dataType":"string","required":true},
+            "updatedAt": {"dataType":"string","required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "SyncPullResponseDto": {
+        "dataType": "refObject",
+        "properties": {
+            "pulledAt": {"dataType":"string","required":true},
+            "customers": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncPullCustomerDto"},"required":true},
+            "lots": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncPullLotDto"},"required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "SyncPullRequestDto": {
+        "dataType": "refObject",
+        "properties": {
+            "tenantId": {"dataType":"string","required":true},
+            "facilityId": {"dataType":"string","required":true},
+            "deviceId": {"dataType":"string","required":true},
+            "since": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}]},
         },
         "additionalProperties": false,
     },
@@ -1052,6 +1186,37 @@ export function RegisterRoutes(app: Router) {
 
               await templateService.apiHandler({
                 methodName: 'pushOfflineEvents',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: 200,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsSyncController_pullCentralState: Record<string, TsoaRoute.ParameterSchema> = {
+                body: {"in":"body","name":"body","required":true,"ref":"SyncPullRequestDto"},
+        };
+        app.post('/api/v1/sync/pull',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(SyncController)),
+            ...(fetchMiddlewares<RequestHandler>(SyncController.prototype.pullCentralState)),
+
+            async function SyncController_pullCentralState(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsSyncController_pullCentralState, request, response });
+
+                const controller = new SyncController();
+
+              await templateService.apiHandler({
+                methodName: 'pullCentralState',
                 controller,
                 response,
                 next,

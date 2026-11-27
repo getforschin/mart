@@ -262,6 +262,17 @@ cd central-backend && npm run build && npm run seed
 
 ---
 
+## Production API (default)
+
+All apps should talk to the Railway API (production DB):
+
+`https://mart-production-cdeb28ec.up.railway.app`
+
+- Health: `/api/v1/health`
+- Docs: `/api/docs`
+
+Local `.env` files for admin, storefront, and POS already point here.
+
 ## Cloud deploy
 
 See **[DEPLOY.md](./DEPLOY.md)** for step-by-step production hosting (VPS Docker or PaaS).
@@ -277,21 +288,25 @@ npm run prod:ps
 
 ```
 mart/
+├── packages/mart-app/          # Shared Admin + POS UI shell (DataPort)
 ├── docker-compose.yml          # Dev: PostgreSQL 15, Redis 7, Adminer
 ├── docker-compose.prod.yml     # Prod-style API + web + DB stack
-├── DEPLOY.md                   # Cloud deploy guide
+├── DEPLOY.md                   # Cloud deploy guide (API + Admin on Railway)
 ├── scripts/setup.sh            # One-time setup script
 ├── central-backend/            # TSOA + TypeORM API (port 3000)
 ├── web-apps/
-│   ├── admin-portal/           # Expiry dashboard (port 5173)
+│   ├── admin-portal/           # Same modules as POS, online API (port 5173)
 │   └── client-storefront/      # B2C storefront (port 5174)
-└── desktop-app/                # Electron offline POS
+└── desktop-app/                # Electron offline-first POS
 ```
+
+Admin and POS share one UI (`@mart/app`). POS is offline-first (SQLite + sync); Admin talks to Railway API only. POS header shows Online/Offline, last API contact, pending sync counts, and a **Sync Now** button.
 
 ## Offline Sync Flow
 
-1. POS creates invoices locally (`isSynced = 0`)
-2. Background worker polls connectivity every 10 seconds
-3. When online, pushes to `POST /api/v1/sync/push`
-4. Server applies idempotent delta stock reduction
-5. Local rows marked `isSynced = 1` atomically
+1. **POS work is always local** — billing/search/customers hit SQLite only (no API on the hot path)
+2. Background worker **pushes** pending outbox about every **30 seconds** (parallel, does not block the cashier)
+3. Background worker **pulls** Admin/web changes about every **5 minutes** into local DB
+4. Cashier can press **Sync Now** anytime for immediate push + pull
+5. Server applies idempotent events; only ACCEPTED/DUPLICATE ids are marked synced
+6. Header shows pending counts until the outbox is clear

@@ -1,4 +1,4 @@
-import { LocalProductLot } from '../../../shared/types';
+import { LocalProductLot } from '../../shared/types';
 
 interface LotSelectionModalProps {
   productName: string;
@@ -19,12 +19,11 @@ export function LotSelectionModal({
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="lot-modal-title">
       <div className="modal">
         <h2 id="lot-modal-title">Select MRP — {productName}</h2>
-        <p className="modal__subtitle">
-          Multiple price points detected. FIFO recommends the lot expiring soonest.
-        </p>
+        <p className="modal__subtitle">Multiple price points detected. Pick the lot to bill.</p>
         <div className="lot-grid">
           {candidates.map((lot) => {
             const isFifo = fifoRecommendation?.id === lot.id;
+            const sale = lot.saleRate || lot.mrp;
             return (
               <button
                 key={lot.id}
@@ -32,12 +31,9 @@ export function LotSelectionModal({
                 className={`lot-card ${isFifo ? 'lot-card--fifo' : ''}`}
                 onClick={() => onSelect(lot)}
               >
-                {isFifo && <span className="fifo-tag">FIFO</span>}
-                <span className="lot-card__mrp">₹{lot.mrp.toFixed(2)}</span>
-                <span className="lot-card__batch">{lot.batchNumber}</span>
-                <span className="lot-card__expiry">
-                  Exp: {new Date(lot.expiryDate).toLocaleDateString()}
-                </span>
+                {isFifo && <span className="fifo-tag">Suggested</span>}
+                <span className="lot-card__mrp">MRP ₹{lot.mrp.toFixed(2)}</span>
+                <span className="lot-card__batch">Sale ₹{sale.toFixed(2)}</span>
                 <span className="lot-card__qty">Stock: {lot.quantityOnHand}</span>
               </button>
             );

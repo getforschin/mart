@@ -79,10 +79,12 @@ services:
 
   admin:
     build:
-      context: ./web-apps/admin-portal
+      context: .
+      dockerfile: web-apps/admin-portal/Dockerfile
       args:
         VITE_API_BASE_URL: ${PUBLIC_API_URL}
         VITE_TENANT_ID: ${PUBLIC_TENANT_ID}
+        VITE_FACILITY_ID: ${PUBLIC_FACILITY_ID}
         VITE_AUTH_TOKEN: ${PUBLIC_AUTH_TOKEN:-}
     restart: unless-stopped
     ports:

@@ -131,17 +131,72 @@ export interface SyncAttendanceDto {
   biometricSignatureHash: string;
 }
 
+export interface SyncCustomerDto {
+  id: string;
+  tenantId: string;
+  name: string;
+  mobile: string;
+  email?: string | null;
+  previousDue?: number;
+  membershipCard?: string | null;
+  loyaltyPoints?: number;
+  updatedAt: string;
+}
+
+export interface SyncPurchaseItemDto {
+  productId: string;
+  productName: string;
+  barcode?: string;
+  quantity: number;
+  purchaseRate: number;
+  mrp: number;
+  saleRate: number;
+  gstPercent?: number;
+  lotId?: string | null;
+}
+
+export interface SyncPurchaseDto {
+  id: string;
+  tenantId: string;
+  facilityId: string;
+  supplierId: string;
+  invoiceNumber?: string;
+  invoiceDate: string;
+  gstMode?: string;
+  remark?: string;
+  status?: string;
+  otherCharges?: number;
+  items: SyncPurchaseItemDto[];
+}
+
+export interface SyncStockEventDto {
+  id: string;
+  tenantId: string;
+  facilityId: string;
+  eventType: 'DUMP' | 'CORRECTION' | 'TRANSFER';
+  productId: string;
+  lotId: string;
+  quantity: number;
+  newQuantity?: number;
+  toFacilityId?: string;
+  remark?: string;
+  createdAt: string;
+}
+
 export interface SyncPushRequestDto {
   tenantId: string;
   facilityId: string;
   deviceId: string;
-  invoices: SyncOrderInvoiceDto[];
-  attendanceRecords: SyncAttendanceDto[];
+  invoices?: SyncOrderInvoiceDto[];
+  attendanceRecords?: SyncAttendanceDto[];
+  customers?: SyncCustomerDto[];
+  purchases?: SyncPurchaseDto[];
+  stockEvents?: SyncStockEventDto[];
 }
 
 export interface SyncEventResultDto {
   clientEventId: string;
-  eventType: 'ORDER_INVOICE' | 'WORKFORCE_ATTENDANCE';
+  eventType: 'ORDER_INVOICE' | 'WORKFORCE_ATTENDANCE' | 'CUSTOMER' | 'PURCHASE' | 'STOCK_EVENT';
   status: SyncResultStatus;
   message: string;
 }
@@ -152,6 +207,53 @@ export interface SyncPushResponseDto {
   duplicateCount: number;
   rejectedCount: number;
   results: SyncEventResultDto[];
+}
+
+export interface SyncPullRequestDto {
+  tenantId: string;
+  facilityId: string;
+  deviceId: string;
+  since?: string | null;
+}
+
+export interface SyncPullLotDto {
+  id: string;
+  productId: string;
+  productName: string;
+  productSku: string;
+  baseBarcode: string;
+  company: string;
+  size: string;
+  color: string;
+  hsnCode: string;
+  batchNumber: string;
+  costPrice: number;
+  mrp: number;
+  saleRate: number;
+  manufactureDate: string;
+  expiryDate: string;
+  lotBarcode: string;
+  quantityOnHand: number;
+  aisleShelfLocation: string | null;
+  facilityId: string;
+  updatedAt: string;
+}
+
+export interface SyncPullCustomerDto {
+  id: string;
+  name: string;
+  mobile: string;
+  email: string | null;
+  previousDue: number;
+  membershipCard: string | null;
+  loyaltyPoints: number;
+  updatedAt: string;
+}
+
+export interface SyncPullResponseDto {
+  pulledAt: string;
+  customers: SyncPullCustomerDto[];
+  lots: SyncPullLotDto[];
 }
 
 export interface CreateOrderRequestDto {

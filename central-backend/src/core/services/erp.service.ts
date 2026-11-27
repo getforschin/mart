@@ -200,7 +200,13 @@ export class ErpService {
   async upsertCustomer(tenantId: string, payload: Partial<Customer> & { name: string; mobile: string }): Promise<Customer> {
     const repo = getDataSource().getRepository(Customer);
     let row = payload.id ? await repo.findOne({ where: { id: payload.id, tenantId } }) : null;
-    if (!row) row = repo.create({ tenantId, isActive: true, outstandingDue: 0, creditLimit: 0 });
+    if (!row && payload.mobile) {
+      row = await repo.findOne({ where: { tenantId, mobile: payload.mobile } });
+    }
+    if (!row) {
+      row = repo.create({ tenantId, isActive: true, outstandingDue: 0, creditLimit: 0 });
+      if (payload.id) row.id = payload.id;
+    }
     Object.assign(row, {
       name: payload.name,
       mobile: payload.mobile,
@@ -214,6 +220,7 @@ export class ErpService {
       discountPercent: payload.discountPercent ?? row.discountPercent ?? 0,
       priceType: payload.priceType ?? row.priceType ?? 'MRP',
       creditLimit: payload.creditLimit ?? row.creditLimit ?? 0,
+      outstandingDue: payload.outstandingDue ?? row.outstandingDue ?? 0,
       isActive: payload.isActive ?? true,
     });
     if (payload.passwordHash) row.passwordHash = payload.passwordHash;
@@ -292,6 +299,7 @@ export class ErpService {
   async createPurchase(
     tenantId: string,
     payload: {
+      id?: string;
       facilityId: string;
       supplierId: string;
       invoiceNumber?: string;
@@ -314,6 +322,10 @@ export class ErpService {
   ): Promise<Purchase> {
     const ds = getDataSource();
     return ds.transaction(async (manager) => {
+      if (payload.id) {
+        const existing = await manager.findOne(Purchase, { where: { id: payload.id }, relations: ['items'] });
+        if (existing) return existing;
+      }
       const items = payload.items.map((item) => {
         const lineTotal = item.quantity * item.purchaseRate;
         return manager.create(PurchaseItem, {
@@ -327,6 +339,7 @@ export class ErpService {
       const taxTotal = items.reduce((s, i) => s + num(i.lineTotal) * (num(i.gstPercent) / 100), 0);
       const otherCharges = payload.otherCharges ?? 0;
       const purchase = manager.create(Purchase, {
+        ...(payload.id ? { id: payload.id } : {}),
         tenantId,
         facilityId: payload.facilityId,
         supplierId: payload.supplierId,
@@ -624,7 +637,7 @@ export class ErpService {
     const ds = getDataSource();
     return ds.transaction(async (manager) => {
       const id = uuidv4();
-      const invoiceNumber = `INV-${Date.now().toString().slice(-8)}`;
+      const invoiceNumber = this.buildDatetimeInvoiceNumber();
       let subtotal = 0;
       let taxTotal = 0;
       const orderItems: OrderItem[] = [];
@@ -912,6 +925,17 @@ export class ErpService {
       lowStock: stock.filter((r) => num(r.minStock) > 0 && num(r.quantityOnHand) <= num(r.minStock)),
       taxByRate,
     };
+  }
+
+  /** INV-YYYYMMDD-HHmmss-SSS — datetime-unique invoice number */
+  private buildDatetimeInvoiceNumber(): string {
+    const now = new Date();
+    const pad = (value: number, size: number): string => String(value).padStart(size, '0');
+    return (
+      `INV-${now.getFullYear()}${pad(now.getMonth() + 1, 2)}${pad(now.getDate(), 2)}` +
+      `-${pad(now.getHours(), 2)}${pad(now.getMinutes(), 2)}${pad(now.getSeconds(), 2)}` +
+      `-${pad(now.getMilliseconds(), 3)}`
+    );
   }
 }
 

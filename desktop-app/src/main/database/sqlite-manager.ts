@@ -47,8 +47,72 @@ const SCHEMA_DDL = `
     email TEXT,
     previous_due REAL NOT NULL DEFAULT 0,
     membership_card TEXT,
-    loyalty_points INTEGER NOT NULL DEFAULT 0
+    loyalty_points INTEGER NOT NULL DEFAULT 0,
+    is_synced INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS pos_suppliers (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    mobile TEXT,
+    email TEXT,
+    gstin TEXT,
+    is_synced INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS purchases_local (
+    id TEXT PRIMARY KEY NOT NULL,
+    tenant_id TEXT NOT NULL,
+    facility_id TEXT NOT NULL,
+    supplier_id TEXT NOT NULL,
+    invoice_number TEXT,
+    invoice_date TEXT NOT NULL,
+    gst_mode TEXT NOT NULL DEFAULT 'NON_GST',
+    status TEXT NOT NULL DEFAULT 'COMPLETED',
+    remark TEXT,
+    other_charges REAL NOT NULL DEFAULT 0,
+    subtotal REAL NOT NULL DEFAULT 0,
+    tax_total REAL NOT NULL DEFAULT 0,
+    grand_total REAL NOT NULL DEFAULT 0,
+    is_synced INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS purchase_items_local (
+    id TEXT PRIMARY KEY NOT NULL,
+    purchase_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    product_name TEXT NOT NULL,
+    barcode TEXT,
+    quantity INTEGER NOT NULL,
+    purchase_rate REAL NOT NULL,
+    mrp REAL NOT NULL,
+    sale_rate REAL NOT NULL,
+    gst_percent REAL NOT NULL DEFAULT 0,
+    lot_id TEXT,
+    FOREIGN KEY (purchase_id) REFERENCES purchases_local(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS stock_events_local (
+    id TEXT PRIMARY KEY NOT NULL,
+    tenant_id TEXT NOT NULL,
+    facility_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    lot_id TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 0,
+    new_quantity INTEGER,
+    to_facility_id TEXT,
+    remark TEXT,
+    is_synced INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_customers_is_synced ON pos_customers(is_synced);
+  CREATE INDEX IF NOT EXISTS idx_purchases_is_synced ON purchases_local(is_synced);
+  CREATE INDEX IF NOT EXISTS idx_stock_events_is_synced ON stock_events_local(is_synced);
 
   CREATE TABLE IF NOT EXISTS invoice_counter (
     facility_id TEXT PRIMARY KEY NOT NULL,
@@ -177,6 +241,8 @@ function runMigrations(db: Database.Database): void {
     { table: 'order_invoices_local', column: 'gross_sale', ddl: 'ALTER TABLE order_invoices_local ADD COLUMN gross_sale REAL NOT NULL DEFAULT 0' },
     { table: 'order_invoices_local', column: 'round_off', ddl: 'ALTER TABLE order_invoices_local ADD COLUMN round_off REAL NOT NULL DEFAULT 0' },
     { table: 'order_invoices_local', column: 'coupon_code', ddl: 'ALTER TABLE order_invoices_local ADD COLUMN coupon_code TEXT' },
+    { table: 'pos_customers', column: 'is_synced', ddl: 'ALTER TABLE pos_customers ADD COLUMN is_synced INTEGER NOT NULL DEFAULT 0' },
+    { table: 'pos_customers', column: 'updated_at', ddl: 'ALTER TABLE pos_customers ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime(\'now\'))' },
   ];
 
   for (const migration of migrations) {
@@ -195,12 +261,24 @@ export function getDatabasePath(): string {
   return path.join(dbDirectory, 'mart-pos.db');
 }
 
+function seedBundledDemoDatabase(dbPath: string): void {
+  if (fs.existsSync(dbPath)) return;
+  if (!app.isPackaged) return;
+
+  const bundled = path.join(process.resourcesPath, 'demo-data', 'mart-pos.db');
+  if (!fs.existsSync(bundled)) return;
+
+  fs.copyFileSync(bundled, dbPath);
+  console.log('[Main] Seeded local POS database from bundled demo data');
+}
+
 export function initializeDatabase(): Database.Database {
   if (databaseInstance !== null) {
     return databaseInstance;
   }
 
   const dbPath = getDatabasePath();
+  seedBundledDemoDatabase(dbPath);
   const db = new Database(dbPath);
 
   db.pragma('journal_mode = WAL');
@@ -243,15 +321,30 @@ function seedDefaultConfig(db: Database.Database): void {
     deviceId: process.env.POS_DEVICE_ID ?? `POS-${process.platform}-${Date.now()}`,
     apiBaseUrl: process.env.POS_API_BASE_URL ?? 'http://localhost:3000',
     taxRate: process.env.POS_TAX_RATE ?? '18',
+    lastApiContactAt: '',
+    lastSyncAt: '',
+    lastPullAt: '',
+    lastOnline: '0',
   };
 
-  const insertStmt = db.prepare(
+  // Keys that must always follow .env (so production API URL is never stuck on localhost)
+  const alwaysOverrideFromEnv = new Set(['apiBaseUrl', 'tenantId', 'facilityId', 'taxRate']);
+
+  const insertIgnore = db.prepare(
     'INSERT OR IGNORE INTO pos_config (key, value) VALUES (@key, @value)',
+  );
+  const upsert = db.prepare(
+    `INSERT INTO pos_config (key, value) VALUES (@key, @value)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
   );
 
   const transaction = db.transaction(() => {
     for (const [key, value] of Object.entries(defaults)) {
-      insertStmt.run({ key, value });
+      if (alwaysOverrideFromEnv.has(key)) {
+        upsert.run({ key, value });
+      } else {
+        insertIgnore.run({ key, value });
+      }
     }
   });
 
@@ -260,14 +353,22 @@ function seedDefaultConfig(db: Database.Database): void {
 
 function seedSampleCustomers(db: Database.Database): void {
   const count = db.prepare('SELECT COUNT(*) AS count FROM pos_customers').get() as { count: number };
-  if (count.count > 0) return;
+  if (count.count === 0) {
+    db.prepare(
+      `INSERT INTO pos_customers (id, name, mobile, email, previous_due, membership_card, loyalty_points, is_synced)
+       VALUES ('cust-001', 'Walk-in Customer', '9999999999', NULL, 0, NULL, 0, 1),
+              ('cust-002', 'Rahul Sharma', '9876543210', 'rahul@example.com', 450.00, 'MEM-1001', 120, 1),
+              ('cust-003', 'Priya Patel', '9123456780', NULL, 0, 'MEM-1002', 340, 1)`,
+    ).run();
+  }
 
-  db.prepare(
-    `INSERT INTO pos_customers (id, name, mobile, email, previous_due, membership_card, loyalty_points)
-     VALUES ('cust-001', 'Walk-in Customer', '9999999999', NULL, 0, NULL, 0),
-            ('cust-002', 'Rahul Sharma', '9876543210', 'rahul@example.com', 450.00, 'MEM-1001', 120),
-            ('cust-003', 'Priya Patel', '9123456780', NULL, 0, 'MEM-1002', 340)`,
-  ).run();
+  const supplierCount = db.prepare('SELECT COUNT(*) AS count FROM pos_suppliers').get() as { count: number };
+  if (supplierCount.count === 0) {
+    db.prepare(
+      `INSERT INTO pos_suppliers (id, name, mobile, email, gstin, is_synced)
+       VALUES ('supp-001', 'Demo Supplier', '9000000001', NULL, NULL, 1)`,
+    ).run();
+  }
 }
 
 function seedSampleInventory(db: Database.Database): void {

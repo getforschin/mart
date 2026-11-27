@@ -207,11 +207,52 @@ If health fails, open **Deploy Logs** and check DB connection / build errors.
 2. Redeploy
 3. Later set `CORS_ORIGINS` to your real admin/shop URLs
 
-### 6. Frontends next (Cloudflare Pages / Vercel)
+### 6. Always use production API / DB (local UIs)
+
+Local admin, storefront, and POS are configured to call the Railway API  
+(`https://mart-production-cdeb28ec.up.railway.app`), which uses the **production** Postgres.
+
+On Railway API **Variables**, set CORS so local browsers work:
+
+```text
+CORS_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:5175,https://mart-production-cdeb28ec.up.railway.app
+```
+
+(Or keep `CORS_ORIGINS=*` for early testing.)
+
+You do **not** need local Docker Postgres for day-to-day app use.
+
+### 7. Deploy Admin portal on Railway (same project)
+
+Admin uses the shared `@mart/app` shell (same modules as POS; online-only).
+
+1. In the Railway project → **+ New** → **GitHub Repo** (same `mart` repo) **or** Empty service + connect repo
+2. Service settings:
+   - **Root Directory**: `/` (repo root)
+   - **Dockerfile path**: `web-apps/admin-portal/Dockerfile`
+   - Or use `web-apps/admin-portal/railway.toml` if the service root is the repo
+3. Build args / Variables:
+
+| Variable | Value |
+|----------|--------|
+| `VITE_API_BASE_URL` | `https://mart-production-cdeb28ec.up.railway.app` |
+| `VITE_TENANT_ID` | `00000000-0000-0000-0000-000000000001` |
+| `VITE_FACILITY_ID` | `00000000-0000-0000-0000-000000000002` |
+
+4. **Networking** → Generate Domain (e.g. `https://mart-admin-….up.railway.app`)
+5. On the **API** service, set CORS to include the Admin domain (+ local POS ports):
+
+```text
+CORS_ORIGINS=https://YOUR-ADMIN.up.railway.app,http://localhost:5173,http://localhost:5174,http://localhost:5175
+```
+
+6. Verify: open Admin URL → Dashboard / Customers / Billing / Stock should load against Railway API.
+
+### 7b. Frontends on Cloudflare Pages / Vercel (alternative)
 
 Build with:
 
-`VITE_API_BASE_URL=https://YOUR-API.up.railway.app`
+`VITE_API_BASE_URL=https://mart-production-cdeb28ec.up.railway.app`
 
 ---
 

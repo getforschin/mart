@@ -3,73 +3,260 @@ import {
   InvoiceStatus,
   LocalProductLot,
   PaymentChannel,
+  PosCustomer,
   PosSession,
+  ProductSearchHit,
   SaleType,
 } from '../../shared/types';
 import { usePosBilling } from '../hooks/usePosBilling';
 import { LotSelectionModal } from '../components/LotSelectionModal';
+import { CustomerEntryModal } from '../components/CustomerEntryModal';
 
 interface PosBillingPageProps {
   session: PosSession;
-  onLogout: () => void;
+  onLogout?: () => void;
+  embedded?: boolean;
 }
 
-export function PosBillingPage({ session, onLogout }: PosBillingPageProps): JSX.Element {
+function formatCustomerLabel(customer: PosCustomer): string {
+  return `${customer.name} · ${customer.mobile}`;
+}
+
+function looksLikeMobileQuery(value: string): boolean {
+  const digits = value.replace(/\D/g, '');
+  return digits.length >= 3 && /^[\d\s+-]+$/.test(value.trim());
+}
+
+export function PosBillingPage({ session, onLogout, embedded = false }: PosBillingPageProps): JSX.Element {
   const billing = usePosBilling(session);
   const [barcodeInput, setBarcodeInput] = useState('');
+  const [searchHits, setSearchHits] = useState<ProductSearchHit[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customerHits, setCustomerHits] = useState<PosCustomer[]>([]);
+  const [customerSuggestOpen, setCustomerSuggestOpen] = useState(false);
+  const [customerModal, setCustomerModal] = useState<{
+    name: string;
+    mobile: string;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const customerInputRef = useRef<HTMLInputElement>(null);
+  const searchTimer = useRef<number | null>(null);
+  const customerTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (billing.customer) {
+      setCustomerQuery(formatCustomerLabel(billing.customer));
+      setCustomerHits([]);
+      setCustomerSuggestOpen(false);
+    } else if (!billing.customerMobile && !billing.customerName) {
+      setCustomerQuery('');
+    }
+  }, [billing.customer, billing.customerMobile, billing.customerName]);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'F2' || event.key === 'F3') {
+        event.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const runSearch = (value: string): void => {
+    if (searchTimer.current !== null) {
+      window.clearTimeout(searchTimer.current);
+    }
+    const trimmed = value.trim();
+    if (trimmed.length < 2 || looksLikeBarcode(trimmed)) {
+      setSearchHits([]);
+      setSearchOpen(false);
+      return;
+    }
+    searchTimer.current = window.setTimeout(() => {
+      void billing.searchProducts(trimmed).then((hits) => {
+        setSearchHits(hits);
+        setSearchOpen(hits.length > 0);
+      });
+    }, 180);
+  };
+
+  const runCustomerSuggest = (value: string): void => {
+    if (customerTimer.current !== null) {
+      window.clearTimeout(customerTimer.current);
+    }
+    const trimmed = value.trim();
+    if (trimmed.length < 2) {
+      setCustomerHits([]);
+      setCustomerSuggestOpen(false);
+      return;
+    }
+    customerTimer.current = window.setTimeout(() => {
+      void billing.searchCustomers(trimmed).then((hits) => {
+        setCustomerHits(hits);
+        setCustomerSuggestOpen(true);
+      });
+    }, 180);
+  };
+
+  const openNewCustomerModal = (raw: string): void => {
+    const trimmed = raw.trim();
+    if (looksLikeMobileQuery(trimmed)) {
+      setCustomerModal({
+        name: '',
+        mobile: trimmed.replace(/\D/g, '').slice(0, 10),
+      });
+    } else {
+      setCustomerModal({
+        name: trimmed,
+        mobile: '',
+      });
+    }
+    setCustomerSuggestOpen(false);
+  };
+
   const handleScan = (event: React.FormEvent): void => {
     event.preventDefault();
     const value = barcodeInput.trim();
     if (!value) return;
+
+    if (!looksLikeBarcode(value)) {
+      void (async () => {
+        try {
+          const hits =
+            searchHits.length > 0 ? searchHits : await billing.searchProducts(value);
+          if (hits.length === 0) {
+            billing.setScanError(`No products matching "${value}"`);
+            setSearchHits([]);
+            setSearchOpen(false);
+            return;
+          }
+          setSearchHits(hits);
+          setSearchOpen(true);
+          await pickProduct(hits[0]);
+        } catch (error) {
+          billing.setScanError(
+            error instanceof Error ? error.message : 'Product search failed',
+          );
+        }
+      })();
+      return;
+    }
+
     void billing.scanBarcode(value);
     setBarcodeInput('');
+    setSearchHits([]);
+    setSearchOpen(false);
     inputRef.current?.focus();
   };
 
-  const handleMobileLookup = (): void => {
-    if (billing.customerMobile.length >= 10) {
-      void billing.lookupCustomer(billing.customerMobile);
+  const pickProduct = async (hit: ProductSearchHit): Promise<void> => {
+    setBarcodeInput('');
+    setSearchHits([]);
+    setSearchOpen(false);
+    await billing.addProductByBarcode(hit.baseBarcode);
+    inputRef.current?.focus();
+  };
+
+  const pickCustomer = (selected: PosCustomer): void => {
+    billing.applyCustomer(selected);
+    setCustomerQuery(formatCustomerLabel(selected));
+    setCustomerHits([]);
+    setCustomerSuggestOpen(false);
+    setCustomerModal(null);
+  };
+
+  const handleCustomerQueryChange = (value: string): void => {
+    setCustomerQuery(value);
+    if (billing.customer) {
+      billing.clearCustomer();
+    }
+    runCustomerSuggest(value);
+  };
+
+  const handleCustomerEnter = async (): Promise<void> => {
+    const trimmed = customerQuery.trim();
+    if (!trimmed) return;
+
+    const hits =
+      customerHits.length > 0 ? customerHits : await billing.searchCustomers(trimmed);
+
+    if (hits.length > 0) {
+      pickCustomer(hits[0]);
+      return;
+    }
+
+    openNewCustomerModal(trimmed);
+  };
+
+  const handleCustomerKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      void handleCustomerEnter();
+      return;
+    }
+    if (event.key === 'Escape') {
+      setCustomerSuggestOpen(false);
+      if (billing.customer) {
+        setCustomerQuery(formatCustomerLabel(billing.customer));
+      }
+    }
+    if (event.key === 'ArrowDown' && customerHits.length > 0) {
+      event.preventDefault();
+      setCustomerSuggestOpen(true);
     }
   };
 
+  const handleClearCustomer = (): void => {
+    billing.clearCustomer();
+    setCustomerQuery('');
+    setCustomerHits([]);
+    setCustomerSuggestOpen(false);
+    customerInputRef.current?.focus();
+  };
+
+  const handleDeleteDraft = (): void => {
+    if (!billing.draftId) return;
+    const ok = window.confirm(`Delete draft ${billing.draftInvoiceNumber}?`);
+    if (!ok) return;
+    void billing.deleteDraft(billing.draftId);
+  };
+
   return (
-    <div className="billing-app">
-      <header className="billing-topbar">
-        <div className="billing-topbar__left">
-          <strong>{billing.config?.shopName ?? 'Mart POS'}</strong>
-          <span>{session.facility.name}</span>
-          <span className={`status-pill ${billing.isOnline ? 'online' : 'offline'}`}>
-            {billing.isOnline ? 'Online' : 'Offline'}
-          </span>
-        </div>
-        <nav className="billing-nav">
-          <span>Sale POS</span>
-          <span>Inventory</span>
-          <span>Purchase</span>
-          <span>Reports</span>
-          <span>GST</span>
-          <span>Customer</span>
-        </nav>
-        <div className="billing-topbar__right">
-          <span>{session.user.displayName}</span>
-          <button type="button" className="btn btn--ghost" onClick={onLogout}>
-            Logout
-          </button>
-        </div>
-      </header>
+    <div className={`billing-app ${embedded ? 'billing-app--embedded' : ''}`}>
+      {!embedded && (
+        <header className="billing-topbar">
+          <div className="billing-topbar__left">
+            <strong>{billing.config?.shopName ?? 'Mart POS'}</strong>
+            <span>{session.facility.name}</span>
+            <span className={`status-pill ${billing.isOnline ? 'online' : 'offline'}`}>
+              {billing.isOnline ? 'Online' : 'Offline'}
+            </span>
+          </div>
+          <div className="billing-topbar__right">
+            <span>{session.user.displayName}</span>
+            {onLogout && (
+              <button type="button" className="btn btn--ghost" onClick={onLogout}>
+                Logout
+              </button>
+            )}
+          </div>
+        </header>
+      )}
 
       <div className="shortcut-bar">
-        <span>F2 Barcode</span>
-        <span>F3 Item Search</span>
-        <span>Alt+M Mobile</span>
-        <span>Alt+P Print Bill</span>
-        <span>Alt+S Save Draft</span>
+        <span>F2 / F3 Item search or barcode</span>
+        <span>Customer: type mobile or name → Enter</span>
+        <span className={`status-pill ${billing.isOnline ? 'online' : 'offline'}`}>
+          {billing.isOnline ? 'Online' : 'Offline'}
+        </span>
       </div>
 
       <section className="billing-toolbar">
@@ -93,16 +280,113 @@ export function PosBillingPage({ session, onLogout }: PosBillingPageProps): JSX.
         <div className="billing-fields">
           <label>
             Invoice No
-            <input readOnly value={billing.nextInvoicePreview} />
-          </label>
-          <label>
-            Mobile No
             <input
-              value={billing.customerMobile}
-              onChange={(e) => billing.setCustomerMobile(e.target.value)}
-              onBlur={handleMobileLookup}
-              placeholder="Customer mobile"
+              readOnly
+              value={billing.draftInvoiceNumber ?? billing.nextInvoicePreview}
+              title={
+                billing.draftId
+                  ? 'Editing draft — number kept on complete'
+                  : 'DDMMYYYY + daily sequence (assigned at save)'
+              }
             />
+          </label>
+          <div className="draft-controls">
+            <label>
+              Open Draft
+              <select
+                value={billing.draftId ?? ''}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (!id) {
+                    billing.clearCart();
+                    return;
+                  }
+                  void billing.loadDraft(id);
+                }}
+                disabled={billing.processing}
+              >
+                <option value="">New bill</option>
+                {billing.drafts.map((draft) => (
+                  <option key={draft.id} value={draft.id}>
+                    {draft.invoiceNumber} · ₹{draft.finalPayable.toFixed(2)} ·{' '}
+                    {draft.customerMobile || 'Walk-in'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {billing.draftId && (
+              <button
+                type="button"
+                className="btn btn--ghost draft-delete-btn"
+                disabled={billing.processing}
+                onClick={handleDeleteDraft}
+              >
+                Delete draft
+              </button>
+            )}
+          </div>
+          <label className="billing-field--suggest billing-field--customer">
+            Customer
+            <div className="customer-search-row">
+              <input
+                ref={customerInputRef}
+                value={customerQuery}
+                onChange={(e) => handleCustomerQueryChange(e.target.value)}
+                onKeyDown={handleCustomerKeyDown}
+                onBlur={() => {
+                  window.setTimeout(() => setCustomerSuggestOpen(false), 150);
+                }}
+                onFocus={() => {
+                  if (customerQuery.trim().length >= 2) {
+                    runCustomerSuggest(customerQuery);
+                  }
+                }}
+                placeholder="Type mobile or name…"
+                autoComplete="off"
+              />
+              {(billing.customer || customerQuery) && (
+                <button
+                  type="button"
+                  className="btn btn--ghost customer-clear-btn"
+                  onClick={handleClearCustomer}
+                  title="Clear customer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            {customerSuggestOpen && (
+              <ul className="product-suggest customer-suggest">
+                {customerHits.length > 0 ? (
+                  customerHits.map((hit) => (
+                    <li key={hit.id}>
+                      <button type="button" onMouseDown={() => pickCustomer(hit)}>
+                        <span className="product-suggest__name">{hit.name}</span>
+                        <span className="product-suggest__meta">
+                          {hit.mobile}
+                          {hit.previousDue > 0
+                            ? ` · due ₹${hit.previousDue.toFixed(2)}`
+                            : ''}
+                        </span>
+                      </button>
+                    </li>
+                  ))
+                ) : (
+                  <li>
+                    <button
+                      type="button"
+                      className="customer-suggest__new"
+                      onMouseDown={() => openNewCustomerModal(customerQuery)}
+                    >
+                      <span className="product-suggest__name">
+                        Add new customer “{customerQuery.trim()}”
+                      </span>
+                      <span className="product-suggest__meta">Press Enter to create</span>
+                    </button>
+                  </li>
+                )}
+              </ul>
+            )}
           </label>
           <label>
             Employee
@@ -113,14 +397,43 @@ export function PosBillingPage({ session, onLogout }: PosBillingPageProps): JSX.
 
       <div className="billing-main">
         <div className="billing-left">
-          <form onSubmit={handleScan} className="scan-row">
-            <input
-              ref={inputRef}
-              value={barcodeInput}
-              onChange={(e) => setBarcodeInput(e.target.value)}
-              placeholder="Scan barcode (F2) or enter item code…"
-              disabled={billing.processing}
-            />
+          <form onSubmit={handleScan} className="scan-row scan-row--search">
+            <div className="scan-input-wrap">
+              <input
+                ref={inputRef}
+                value={barcodeInput}
+                onChange={(e) => {
+                  setBarcodeInput(e.target.value);
+                  runSearch(e.target.value);
+                }}
+                onFocus={() => {
+                  if (searchHits.length > 0) setSearchOpen(true);
+                }}
+                onBlur={() => {
+                  window.setTimeout(() => setSearchOpen(false), 150);
+                }}
+                placeholder="Scan barcode, or type product name…"
+                disabled={billing.processing}
+                autoComplete="off"
+              />
+              {searchOpen && searchHits.length > 0 && (
+                <ul className="product-suggest">
+                  {searchHits.map((hit) => (
+                    <li key={hit.productId}>
+                      <button type="button" onMouseDown={() => void pickProduct(hit)}>
+                        <span className="product-suggest__name">{hit.productName}</span>
+                        <span className="product-suggest__meta">
+                          {hit.baseBarcode} · qty {hit.quantityOnHand} · ₹
+                          {hit.mrpMin === hit.mrpMax
+                            ? hit.mrpMin.toFixed(2)
+                            : `${hit.mrpMin.toFixed(0)}–${hit.mrpMax.toFixed(0)}`}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <button type="submit" className="btn btn--primary">
               Add
             </button>
@@ -138,12 +451,11 @@ export function PosBillingPage({ session, onLogout }: PosBillingPageProps): JSX.
                   <th>Company</th>
                   <th>Size</th>
                   <th>Batch</th>
-                  <th>HSN</th>
                   <th>Qty</th>
                   <th>MRP</th>
-                  <th>Rate</th>
+                  <th>Sale</th>
+                  <th>Disc %</th>
                   <th>Disc</th>
-                  <th>Tax</th>
                   <th>Net</th>
                   <th></th>
                 </tr>
@@ -151,8 +463,8 @@ export function PosBillingPage({ session, onLogout }: PosBillingPageProps): JSX.
               <tbody>
                 {billing.cartItems.length === 0 ? (
                   <tr>
-                    <td colSpan={14} className="empty-row">
-                      Scan items to begin billing
+                    <td colSpan={13} className="empty-row">
+                      Scan barcode or type a product name to begin billing
                     </td>
                   </tr>
                 ) : (
@@ -164,12 +476,37 @@ export function PosBillingPage({ session, onLogout }: PosBillingPageProps): JSX.
                       <td>{item.company}</td>
                       <td>{item.size}</td>
                       <td>{item.batchNumber}</td>
-                      <td>{item.hsnCode}</td>
-                      <td>{item.quantity}</td>
+                      <td>
+                        <input
+                          className="qty-input"
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={item.quantity}
+                          onChange={(e) =>
+                            billing.updateLineQuantity(item.lineId, Number(e.target.value))
+                          }
+                        />
+                      </td>
                       <td>₹{item.mrp.toFixed(2)}</td>
                       <td>₹{item.unitPrice.toFixed(2)}</td>
+                      <td>
+                        <input
+                          className="qty-input"
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          value={item.discountPercent}
+                          onChange={(e) =>
+                            billing.updateLineDiscountPercent(
+                              item.lineId,
+                              Number(e.target.value),
+                            )
+                          }
+                        />
+                      </td>
                       <td>₹{item.discountAmount.toFixed(2)}</td>
-                      <td>₹{item.calculatedTax.toFixed(2)}</td>
                       <td>₹{item.netAmount.toFixed(2)}</td>
                       <td>
                         <button type="button" onClick={() => billing.removeLine(item.lineId)}>
@@ -187,20 +524,11 @@ export function PosBillingPage({ session, onLogout }: PosBillingPageProps): JSX.
             <span>
               Customer Previous Due: ₹{(billing.customer?.previousDue ?? 0).toFixed(2)}
             </span>
-            <span>Operator Today Credit Sale: —</span>
           </div>
         </div>
 
         <aside className="billing-right">
           <div className="summary-card">
-            <label>
-              Membership Card
-              <input
-                readOnly
-                value={billing.customer?.membershipCard ?? ''}
-                placeholder="Scan membership card"
-              />
-            </label>
             <label>
               Apply Coupon
               <input
@@ -241,18 +569,6 @@ export function PosBillingPage({ session, onLogout }: PosBillingPageProps): JSX.
               <div>
                 <dt>Discount</dt>
                 <dd>₹{billing.totals.discountAmount.toFixed(2)}</dd>
-              </div>
-              <div>
-                <dt>Taxable Value</dt>
-                <dd>₹{billing.totals.taxableValue.toFixed(2)}</dd>
-              </div>
-              <div>
-                <dt>GST Amount</dt>
-                <dd>₹{billing.totals.gstAmount.toFixed(2)}</dd>
-              </div>
-              <div>
-                <dt>Gross Sale</dt>
-                <dd>₹{billing.totals.grossSale.toFixed(2)}</dd>
               </div>
               <div>
                 <dt>Round Off</dt>
@@ -296,16 +612,21 @@ export function PosBillingPage({ session, onLogout }: PosBillingPageProps): JSX.
               disabled={billing.processing}
               onClick={() => void billing.saveInvoice(InvoiceStatus.DRAFT)}
             >
-              Save as Draft
+              {billing.draftId ? 'Update Draft' : 'Save as Draft'}
             </button>
             <button type="button" className="btn btn--ghost btn--block" onClick={billing.clearCart}>
-              Clear Bill
+              {billing.draftId ? 'Close Draft / New Bill' : 'Clear Bill'}
             </button>
+
+            {billing.draftId && (
+              <p className="last-invoice">Editing draft {billing.draftInvoiceNumber}</p>
+            )}
 
             {billing.lastInvoice !== null && (
               <p className="last-invoice">
                 Saved: {billing.lastInvoice.invoiceNumber} — ₹
-                {billing.lastInvoice.finalPayable.toFixed(2)}
+                {billing.lastInvoice.finalPayable.toFixed(2)} (
+                {billing.lastInvoice.status})
               </p>
             )}
           </div>
@@ -321,10 +642,30 @@ export function PosBillingPage({ session, onLogout }: PosBillingPageProps): JSX.
           onCancel={billing.cancelLotSelection}
         />
       )}
+
+      {customerModal !== null && (
+        <CustomerEntryModal
+          initialName={customerModal.name}
+          initialMobile={customerModal.mobile}
+          onCancel={() => setCustomerModal(null)}
+          onSave={async (input) => {
+            const saved = await billing.saveCustomer(input);
+            pickCustomer(saved);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function billDiscountPercentSafe(value: number): number {
   return Number.isFinite(value) ? value : 0;
+}
+
+function looksLikeBarcode(value: string): boolean {
+  const trimmed = value.trim();
+  if (/^LOT-/i.test(trimmed)) return true;
+  if (/^\d{8,14}$/.test(trimmed)) return true;
+  if (/^[A-Za-z]{1,4}\d{1,6}$/.test(trimmed) && trimmed.length <= 10) return true;
+  return false;
 }

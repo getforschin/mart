@@ -1,14 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { AppShell, MartAppProvider } from '@mart/app';
+import '@mart/app/styles.css';
 import { PosSession } from '../../shared/types';
 import { LoginPage } from './pages/LoginPage';
 import { PosBillingPage } from './pages/PosBillingPage';
+import { createOfflinePort } from './ports/offlinePort';
+import './styles/global.css';
 
 export default function App(): JSX.Element {
   const [session, setSession] = useState<PosSession | null>(null);
   const [booting, setBooting] = useState(true);
+  const port = useMemo(() => createOfflinePort(), []);
 
   useEffect(() => {
-    void window.posApi!.getSession()
+    void window
+      .posApi!.getSession()
       .then((existing) => setSession(existing))
       .finally(() => setBooting(false));
   }, []);
@@ -29,5 +35,14 @@ export default function App(): JSX.Element {
     return <LoginPage onLoggedIn={setSession} />;
   }
 
-  return <PosBillingPage session={session} onLogout={handleLogout} />;
+  return (
+    <MartAppProvider port={port}>
+      <AppShell
+        brand="CNP Mart POS"
+        onLogout={handleLogout}
+        initialModule="billing"
+        billingSlot={<PosBillingPage session={session} embedded />}
+      />
+    </MartAppProvider>
+  );
 }

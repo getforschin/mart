@@ -32,8 +32,6 @@ export function usePosTerminal() {
       setIsOnline(event.online);
     });
 
-    void window.posApi.checkConnectivity().then(setIsOnline);
-
     return unsubscribe;
   }, []);
 

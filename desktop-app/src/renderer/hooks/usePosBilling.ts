@@ -19,11 +19,27 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function recalcLine(item: CartLineItem): CartLineItem {
+  const qty = Math.max(1, Math.floor(item.quantity) || 1);
+  const lineSale = round2(item.unitPrice * qty);
+  const discountAmount = round2((lineSale * (item.discountPercent || 0)) / 100);
+  const netAmount = round2(lineSale - discountAmount);
+  return {
+    ...item,
+    quantity: qty,
+    pieceQty: qty,
+    discountAmount,
+    calculatedTax: 0,
+    netAmount,
+  };
+}
+
 export function usePosBilling(session: PosSession) {
   const [config, setConfig] = useState<PosConfig | null>(null);
   const [cartItems, setCartItems] = useState<CartLineItem[]>([]);
   const [saleType, setSaleType] = useState<SaleType>(SaleType.CASH_SALE);
   const [customerMobile, setCustomerMobile] = useState('');
+  const [customerName, setCustomerName] = useState('');
   const [customer, setCustomer] = useState<PosCustomer | null>(null);
   const [couponCode, setCouponCode] = useState('');
   const [redeemAmount, setRedeemAmount] = useState(0);
@@ -37,19 +53,34 @@ export function usePosBilling(session: PosSession) {
   const [isOnline, setIsOnline] = useState(false);
   const [lastInvoice, setLastInvoice] = useState<LocalOrderInvoice | null>(null);
   const [processing, setProcessing] = useState(false);
-  const [nextInvoicePreview, setNextInvoicePreview] = useState('NEW');
+  const [nextInvoicePreview, setNextInvoicePreview] = useState('…');
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftInvoiceNumber, setDraftInvoiceNumber] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<LocalOrderInvoice[]>([]);
 
-  const taxRate = config?.taxRate ?? 18;
+  const refreshInvoicePreview = useCallback(() => {
+    void window.posApi!.previewNextInvoiceNumber().then(setNextInvoicePreview);
+  }, []);
+
+  const refreshDrafts = useCallback(() => {
+    void window.posApi!.listDraftInvoices().then(setDrafts);
+  }, []);
 
   useEffect(() => {
     void window.posApi!.getConfig().then(setConfig);
+    refreshInvoicePreview();
+    refreshDrafts();
+    const timer = window.setInterval(refreshInvoicePreview, 1000);
+    // Online flag comes only from background sync daemon — never block billing on API.
     const unsubscribe = window.posApi!.onSyncStatus((event) => {
       setSyncStatus(event);
       setIsOnline(event.online);
     });
-    void window.posApi!.checkConnectivity().then(setIsOnline);
-    return unsubscribe;
-  }, []);
+    return () => {
+      window.clearInterval(timer);
+      unsubscribe();
+    };
+  }, [refreshInvoicePreview, refreshDrafts]);
 
   const totals = useMemo(() => {
     const totalMrp = cartItems.reduce((sum, item) => sum + item.mrp * item.quantity, 0);
@@ -57,10 +88,7 @@ export function usePosBilling(session: PosSession) {
     const lineDiscount = cartItems.reduce((sum, item) => sum + item.discountAmount, 0);
     const billDiscount = round2((totalSale * billDiscountPercent) / 100);
     const discountAmount = round2(lineDiscount + billDiscount);
-    const taxableValue = round2(Math.max(totalSale - billDiscount, 0));
-    const gstAmount = cartItems.reduce((sum, item) => sum + item.calculatedTax, 0);
-    const grossSale = round2(taxableValue + gstAmount);
-    const netBeforeRound = grossSale - redeemAmount;
+    const netBeforeRound = round2(Math.max(totalSale - discountAmount - redeemAmount, 0));
     const rounded = Math.round(netBeforeRound);
     const roundOff = round2(rounded - netBeforeRound);
     const netPay = round2(rounded);
@@ -69,9 +97,6 @@ export function usePosBilling(session: PosSession) {
       totalMrp: round2(totalMrp),
       totalSale: round2(totalSale),
       discountAmount,
-      taxableValue,
-      gstAmount: round2(gstAmount),
-      grossSale,
       roundOff,
       netPay,
     };
@@ -80,9 +105,7 @@ export function usePosBilling(session: PosSession) {
   const buildLineItem = useCallback(
     (lot: LocalProductLot, resolution: BarcodeResolutionResult, barcode: string): CartLineItem => {
       const unitPrice = lot.saleRate || lot.mrp;
-      const lineSubtotal = unitPrice;
-      const calculatedTax = round2((lineSubtotal * taxRate) / 100);
-      return {
+      return recalcLine({
         lineId: uuidv4(),
         productId: resolution.productId,
         lotId: lot.id,
@@ -105,12 +128,12 @@ export function usePosBilling(session: PosSession) {
         unitPrice,
         discountPercent: 0,
         discountAmount: 0,
-        calculatedTax,
-        netAmount: round2(lineSubtotal + calculatedTax),
+        calculatedTax: 0,
+        netAmount: unitPrice,
         expiryDate: lot.expiryDate,
-      };
+      });
     },
-    [taxRate],
+    [],
   );
 
   const addLotToCart = useCallback(
@@ -120,15 +143,7 @@ export function usePosBilling(session: PosSession) {
         if (existing) {
           return prev.map((item) =>
             item.lotId === lot.id
-              ? {
-                  ...item,
-                  quantity: item.quantity + 1,
-                  pieceQty: item.pieceQty + 1,
-                  calculatedTax: round2(item.calculatedTax + (item.unitPrice * taxRate) / 100),
-                  netAmount: round2(
-                    item.netAmount + item.unitPrice + (item.unitPrice * taxRate) / 100,
-                  ),
-                }
+              ? recalcLine({ ...item, quantity: item.quantity + 1 })
               : item,
           );
         }
@@ -137,8 +152,25 @@ export function usePosBilling(session: PosSession) {
       setLotSelection(null);
       setScanError(null);
     },
-    [buildLineItem, taxRate],
+    [buildLineItem],
   );
+
+  const updateLineQuantity = useCallback((lineId: string, quantity: number) => {
+    setCartItems((prev) =>
+      prev.map((item) =>
+        item.lineId === lineId ? recalcLine({ ...item, quantity }) : item,
+      ),
+    );
+  }, []);
+
+  const updateLineDiscountPercent = useCallback((lineId: string, discountPercent: number) => {
+    const pct = Math.max(0, Math.min(100, discountPercent || 0));
+    setCartItems((prev) =>
+      prev.map((item) =>
+        item.lineId === lineId ? recalcLine({ ...item, discountPercent: pct }) : item,
+      ),
+    );
+  }, []);
 
   const scanBarcode = useCallback(
     async (barcode: string) => {
@@ -162,11 +194,132 @@ export function usePosBilling(session: PosSession) {
     [addLotToCart],
   );
 
+  const searchProducts = useCallback(async (query: string) => {
+    return window.posApi!.searchProducts(query);
+  }, []);
+
+  const searchCustomers = useCallback(async (query: string) => {
+    return window.posApi!.searchCustomers(query);
+  }, []);
+
+  const addProductByBarcode = useCallback(
+    async (barcode: string) => {
+      await scanBarcode(barcode);
+    },
+    [scanBarcode],
+  );
+
+  const applyCustomer = useCallback((selected: PosCustomer) => {
+    setCustomer(selected);
+    setCustomerMobile(selected.mobile);
+    setCustomerName(selected.name);
+  }, []);
+
+  const clearCustomer = useCallback(() => {
+    setCustomer(null);
+    setCustomerMobile('');
+    setCustomerName('');
+  }, []);
+
+  const saveCustomer = useCallback(
+    async (input: { name: string; mobile: string; email?: string | null }) => {
+      const saved = await window.posApi!.upsertCustomer(input);
+      applyCustomer(saved);
+      return saved;
+    },
+    [applyCustomer],
+  );
+
   const lookupCustomer = useCallback(async (mobile: string) => {
     const result = await window.posApi!.lookupCustomerByMobile(mobile);
-    setCustomer(result);
+    if (result) {
+      setCustomer(result);
+      setCustomerMobile(result.mobile);
+      setCustomerName(result.name);
+    }
     return result;
   }, []);
+
+  const resetBill = useCallback(() => {
+    setCartItems([]);
+    setCustomer(null);
+    setCustomerMobile('');
+    setCustomerName('');
+    setCouponCode('');
+    setRedeemAmount(0);
+    setBillDiscountPercent(0);
+    setDraftId(null);
+    setDraftInvoiceNumber(null);
+    setSaleType(SaleType.CASH_SALE);
+    setPaymentChannel(PaymentChannel.CASH);
+    setScanError(null);
+  }, []);
+
+  const deleteDraft = useCallback(
+    async (invoiceId: string) => {
+      setProcessing(true);
+      try {
+        await window.posApi!.deleteDraftInvoice(invoiceId);
+        if (draftId === invoiceId) {
+          resetBill();
+        }
+        refreshDrafts();
+        refreshInvoicePreview();
+        setScanError(null);
+      } catch (error) {
+        setScanError(error instanceof Error ? error.message : 'Failed to delete draft');
+      } finally {
+        setProcessing(false);
+      }
+    },
+    [draftId, refreshDrafts, refreshInvoicePreview, resetBill],
+  );
+
+  const loadDraft = useCallback(
+    async (invoiceId: string) => {
+      setProcessing(true);
+      try {
+        const invoice = await window.posApi!.getInvoice(invoiceId);
+        if (invoice.status !== InvoiceStatus.DRAFT) {
+          setScanError('Only draft invoices can be edited');
+          return;
+        }
+        setDraftId(invoice.id);
+        setDraftInvoiceNumber(invoice.invoiceNumber);
+        setCartItems(invoice.items.map((item) => recalcLine(item)));
+        setSaleType(invoice.saleType);
+        setPaymentChannel(invoice.paymentChannel);
+        setCustomerMobile(invoice.customerMobile || '');
+        const name =
+          invoice.customerPayload?.name && invoice.customerPayload.name !== 'Walk-in Customer'
+            ? invoice.customerPayload.name
+            : '';
+        setCustomerName(name);
+        setCustomer(
+          invoice.customerMobile
+            ? {
+                id: `draft-cust-${invoice.id}`,
+                name: name || 'Walk-in',
+                mobile: invoice.customerMobile,
+                email: invoice.customerPayload?.email || null,
+                previousDue: 0,
+                membershipCard: null,
+                loyaltyPoints: 0,
+              }
+            : null,
+        );
+        setCouponCode(invoice.couponCode ?? '');
+        setRedeemAmount(invoice.redeemAmount || 0);
+        setBillDiscountPercent(0);
+        setScanError(null);
+      } catch (error) {
+        setScanError(error instanceof Error ? error.message : 'Failed to open draft');
+      } finally {
+        setProcessing(false);
+      }
+    },
+    [],
+  );
 
   const saveInvoice = useCallback(
     async (status: InvoiceStatus) => {
@@ -177,11 +330,26 @@ export function usePosBilling(session: PosSession) {
 
       setProcessing(true);
       try {
+        const customerPayload: PosCustomer | null =
+          customer ??
+          (customerMobile.trim().length >= 10
+            ? {
+                id: `walkin-${customerMobile.trim()}`,
+                name: customerName.trim() || 'Walk-in',
+                mobile: customerMobile.trim(),
+                email: null,
+                previousDue: 0,
+                membershipCard: null,
+                loyaltyPoints: 0,
+              }
+            : null);
+
         const payload: CreateInvoicePayload = {
+          draftId,
           items: cartItems,
           saleType,
           paymentChannel,
-          customer,
+          customer: customerPayload,
           customerMobile,
           employeeName: session.user.displayName,
           couponCode,
@@ -194,14 +362,13 @@ export function usePosBilling(session: PosSession) {
 
         const invoice = await window.posApi!.createInvoice(payload);
         setLastInvoice(invoice);
-        setNextInvoicePreview(invoice.invoiceNumber);
+        refreshInvoicePreview();
+        refreshDrafts();
         if (status === InvoiceStatus.COMPLETED) {
-          setCartItems([]);
-          setCustomer(null);
-          setCustomerMobile('');
-          setCouponCode('');
-          setRedeemAmount(0);
-          setBillDiscountPercent(0);
+          resetBill();
+        } else {
+          setDraftId(invoice.id);
+          setDraftInvoiceNumber(invoice.invoiceNumber);
         }
         setScanError(null);
         return invoice;
@@ -214,15 +381,20 @@ export function usePosBilling(session: PosSession) {
     },
     [
       cartItems,
+      draftId,
       saleType,
       paymentChannel,
       customer,
       customerMobile,
+      customerName,
       session.user.displayName,
       couponCode,
       redeemAmount,
       billDiscountPercent,
       totals.roundOff,
+      refreshInvoicePreview,
+      refreshDrafts,
+      resetBill,
     ],
   );
 
@@ -231,9 +403,9 @@ export function usePosBilling(session: PosSession) {
   }, []);
 
   const clearCart = useCallback(() => {
-    setCartItems([]);
-    setScanError(null);
-  }, []);
+    resetBill();
+    refreshDrafts();
+  }, [resetBill, refreshDrafts]);
 
   return {
     config,
@@ -243,8 +415,15 @@ export function usePosBilling(session: PosSession) {
     setSaleType,
     customerMobile,
     setCustomerMobile,
+    customerName,
+    setCustomerName,
     customer,
+    applyCustomer,
+    clearCustomer,
+    saveCustomer,
     lookupCustomer,
+    searchCustomers,
+    deleteDraft,
     couponCode,
     setCouponCode,
     redeemAmount,
@@ -255,13 +434,23 @@ export function usePosBilling(session: PosSession) {
     setPaymentChannel,
     lotSelection,
     scanError,
+    setScanError,
     syncStatus,
     isOnline,
     lastInvoice,
     nextInvoicePreview,
+    draftId,
+    draftInvoiceNumber,
+    drafts,
+    refreshDrafts,
+    loadDraft,
     processing,
     totals,
     scanBarcode,
+    searchProducts,
+    addProductByBarcode,
+    updateLineQuantity,
+    updateLineDiscountPercent,
     selectLot: (lot: LocalProductLot) => {
       if (!lotSelection) return;
       addLotToCart(lot, lotSelection.resolution, lot.baseBarcode);

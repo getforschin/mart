@@ -1,11 +1,29 @@
 import { app, BrowserWindow, shell } from 'electron';
+import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
-
-dotenv.config({ path: path.join(__dirname, '../../.env') });
 import { initializeDatabase, closeDatabase } from './database/sqlite-manager';
 import { registerIpcHandlers } from './ipc/handlers';
 import { syncDaemon } from './sync/sync-daemon';
+
+function loadPosEnv(): void {
+  const candidates = [
+    app.isPackaged ? path.join(process.resourcesPath, 'pos.env') : '',
+    path.join(__dirname, '../../pos.env'),
+    path.join(__dirname, '../../.env'),
+  ].filter(Boolean);
+
+  for (const envPath of candidates) {
+    if (fs.existsSync(envPath)) {
+      dotenv.config({ path: envPath, override: true });
+      console.log('[Main] Loaded env from', envPath);
+      return;
+    }
+  }
+  console.warn('[Main] No pos.env/.env found — using process defaults');
+}
+
+loadPosEnv();
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -15,7 +33,7 @@ function createMainWindow(): BrowserWindow {
     height: 800,
     minWidth: 1024,
     minHeight: 700,
-    title: 'Mart POS Terminal',
+    title: 'CNP Mart POS',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -33,7 +51,9 @@ function createMainWindow(): BrowserWindow {
   });
 
   if (isDev) {
-    void mainWindow.loadURL('http://localhost:5175').catch((error: unknown) => {
+    const rendererUrl = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5175';
+    console.log('[Main] Loading renderer from', rendererUrl);
+    void mainWindow.loadURL(rendererUrl).catch((error: unknown) => {
       console.error('[Main] loadURL failed', error);
     });
     mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -51,6 +71,7 @@ function createMainWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   try {
+    loadPosEnv();
     initializeDatabase();
     registerIpcHandlers();
   } catch (error) {
@@ -63,6 +84,7 @@ app.whenReady().then(() => {
     return;
   }
 
+  console.log('[Main] API base URL:', process.env.POS_API_BASE_URL ?? '(unset)');
   const mainWindow = createMainWindow();
   syncDaemon.start(mainWindow);
 

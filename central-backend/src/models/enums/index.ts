@@ -37,6 +37,9 @@ export enum OrderOriginSource {
 export enum SyncEventType {
   ORDER_INVOICE = 'ORDER_INVOICE',
   WORKFORCE_ATTENDANCE = 'WORKFORCE_ATTENDANCE',
+  CUSTOMER = 'CUSTOMER',
+  PURCHASE = 'PURCHASE',
+  STOCK_EVENT = 'STOCK_EVENT',
 }
 
 export enum SyncResultStatus {

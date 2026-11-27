@@ -4,6 +4,12 @@
   "private": true,
   "description": "Multi-Tenant Offline-First Omnichannel Retail Ecosystem",
   "packageManager": "npm@10.8.2",
+  "workspaces": [
+    "packages/*",
+    "web-apps/*",
+    "desktop-app",
+    "central-backend"
+  ],
   "engines": {
     "node": ">=20.0.0"
   },
@@ -23,10 +29,13 @@
     "backend:start": "npm run start --prefix central-backend",
     "backend:dev": "npm run dev --prefix central-backend",
     "admin:dev": "npm run dev --prefix web-apps/admin-portal",
+    "admin:build": "npm run build --prefix web-apps/admin-portal",
     "store:dev": "npm run dev --prefix web-apps/client-storefront",
     "pos:install": "bash scripts/pos-install.sh",
     "pos:rebuild": "npm run rebuild --prefix desktop-app",
     "pos:dev": "npm run dev --prefix desktop-app",
+    "pos:release": "npm run release --prefix desktop-app",
+    "pos:release:win": "npm run release:win --prefix desktop-app",
     "prod:up": "docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build",
     "prod:down": "docker compose -f docker-compose.prod.yml --env-file .env.production down",
     "prod:logs": "docker compose -f docker-compose.prod.yml --env-file .env.production logs -f",

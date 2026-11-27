@@ -72,6 +72,7 @@ export interface PosCustomer {
   previousDue: number;
   membershipCard: string | null;
   loyaltyPoints: number;
+  isSynced?: number;
 }
 
 export interface LocalProductLot {
@@ -134,6 +135,8 @@ export interface CartLineItem {
 }
 
 export interface CreateInvoicePayload {
+  /** When set, updates an existing DRAFT instead of creating a new invoice */
+  draftId?: string | null;
   items: CartLineItem[];
   saleType: SaleType;
   paymentChannel: PaymentChannel;
@@ -186,18 +189,58 @@ export interface LocalAttendanceRecord {
   isSynced: number;
 }
 
+export interface SyncPendingCounts {
+  bills: number;
+  customers: number;
+  purchases: number;
+  stock: number;
+  attendance: number;
+}
+
 export interface SyncStatusEvent {
   timestamp: string;
   online: boolean;
+  lastApiContactAt: string | null;
+  lastSyncAt: string | null;
+  pending: SyncPendingCounts;
+  lastSynced: SyncPendingCounts;
+  /** @deprecated use lastSynced.bills */
   invoicesSynced: number;
+  /** @deprecated use lastSynced.attendance */
   attendanceSynced: number;
   errors: string[];
+  /** True while a background or manual sync cycle is running */
+  syncing?: boolean;
 }
 
 export interface LoginRequest {
   username: string;
   password: string;
   facilityId: string;
+}
+
+export interface ProductSearchHit {
+  productId: string;
+  productName: string;
+  productSku: string;
+  baseBarcode: string;
+  company: string;
+  size: string;
+  quantityOnHand: number;
+  mrpMin: number;
+  mrpMax: number;
+  saleRate: number;
+}
+
+export interface InventoryRow extends LocalProductLot {
+  facilityId: string;
+}
+
+export interface SalesReportSummary {
+  invoiceCount: number;
+  salesTotal: number;
+  lastHourInvoiceCount: number;
+  lastHourSalesTotal: number;
 }
 
 export interface PosApi {
@@ -207,12 +250,73 @@ export interface PosApi {
   logout: () => Promise<void>;
   getSession: () => Promise<PosSession | null>;
   lookupCustomerByMobile: (mobile: string) => Promise<PosCustomer | null>;
+  searchCustomers: (query: string) => Promise<PosCustomer[]>;
+  upsertCustomer: (input: {
+    name: string;
+    mobile: string;
+    email?: string | null;
+  }) => Promise<PosCustomer>;
   resolveBarcode: (barcode: string) => Promise<BarcodeResolutionResult>;
+  searchProducts: (query: string) => Promise<ProductSearchHit[]>;
+  previewNextInvoiceNumber: () => Promise<string>;
+  listInventory: (
+    query?: string,
+    options?: { inStockOnly?: boolean; sortBy?: 'name' | 'mrp' | 'qty' },
+  ) => Promise<InventoryRow[]>;
+  listInvoices: (limit?: number) => Promise<LocalOrderInvoice[]>;
+  listDraftInvoices: () => Promise<LocalOrderInvoice[]>;
+  getInvoice: (invoiceId: string) => Promise<LocalOrderInvoice>;
+  deleteDraftInvoice: (invoiceId: string) => Promise<void>;
+  getSalesReportSummary: () => Promise<SalesReportSummary>;
   createInvoice: (payload: CreateInvoicePayload) => Promise<LocalOrderInvoice>;
   getUnsyncedInvoices: () => Promise<LocalOrderInvoice[]>;
   getUnsyncedAttendance: () => Promise<LocalAttendanceRecord[]>;
+  getPendingSyncCounts: () => Promise<SyncPendingCounts>;
+  getSyncMeta: () => Promise<{ lastApiContactAt: string | null; lastSyncAt: string | null }>;
+  listAllCustomers: (query?: string) => Promise<PosCustomer[]>;
+  listSuppliers: () => Promise<
+    Array<{ id: string; name: string; mobile: string | null; email: string | null; gstin: string | null }>
+  >;
+  upsertSupplier: (input: {
+    name: string;
+    mobile?: string;
+    email?: string;
+    gstin?: string;
+  }) => Promise<{ id: string; name: string; mobile: string | null; email: string | null; gstin: string | null }>;
+  listPurchases: () => Promise<Array<Record<string, unknown>>>;
+  createPurchase: (input: {
+    supplierId: string;
+    invoiceNumber?: string;
+    invoiceDate: string;
+    remark?: string;
+    items: Array<{
+      productId: string;
+      productName: string;
+      barcode?: string;
+      quantity: number;
+      purchaseRate: number;
+      mrp: number;
+      saleRate: number;
+      gstPercent?: number;
+    }>;
+  }) => Promise<Record<string, unknown>>;
+  dumpStock: (input: {
+    productId: string;
+    lotId: string;
+    quantity: number;
+    remark?: string;
+  }) => Promise<void>;
+  correctStock: (input: {
+    productId: string;
+    lotId: string;
+    newQuantity: number;
+    remark?: string;
+  }) => Promise<void>;
   onSyncStatus: (callback: (event: SyncStatusEvent) => void) => () => void;
+  /** Optional health probe — do not call on billing hot path */
   checkConnectivity: () => Promise<boolean>;
+  /** Push local outbox + pull central changes now (background; does not block billing) */
+  requestManualSync: () => Promise<{ started: boolean; reason?: string }>;
 }
 
 declare global {

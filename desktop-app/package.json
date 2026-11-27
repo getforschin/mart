@@ -3,15 +3,23 @@
   "version": "1.0.0",
   "description": "Offline-First Native POS Terminal",
   "main": "dist/main/index.js",
+  "author": "CNP Mart <it@cnpmart.local>",
+  "homepage": "https://mart-production-cdeb28ec.up.railway.app",
   "scripts": {
-    "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\"",
+    "dev": "npm run free:vite && concurrently -k \"npm run dev:renderer\" \"npm run dev:main\"",
+    "free:vite": "fuser -k 5175/tcp 2>/dev/null || true",
     "dev:renderer": "vite",
     "dev:main": "tsc -p tsconfig.main.json && tsc -p tsconfig.preload.json && electron . --no-sandbox",
     "build": "tsc -p tsconfig.main.json && tsc -p tsconfig.preload.json && vite build",
     "start": "electron . --no-sandbox",
-    "rebuild": "electron-rebuild -f -w better-sqlite3"
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "pack:linux": "npm run build && electron-builder --linux AppImage deb --x64",
+    "pack:win": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win portable --x64 -c.win.signAndEditExecutable=false",
+    "release": "npm run rebuild && npm run pack:linux",
+    "release:win": "npm run rebuild && npm run pack:win"
   },
   "dependencies": {
+    "@mart/app": "file:../packages/mart-app",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.8.1",
     "dotenv": "^16.4.5",
@@ -29,10 +37,59 @@
     "@vitejs/plugin-react": "^4.3.1",
     "concurrently": "^9.0.1",
     "electron": "^32.1.2",
+    "electron-builder": "^25.1.8",
     "typescript": "^5.6.2",
     "vite": "^5.4.6"
   },
   "engines": {
     "node": ">=20.0.0 <=22.x"
+  },
+  "build": {
+    "appId": "com.cnpmart.pos",
+    "productName": "CNP Mart POS",
+    "copyright": "Copyright © CNP Mart",
+    "directories": {
+      "output": "release/dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "pos.env",
+        "to": "pos.env"
+      },
+      {
+        "from": "demo-data",
+        "to": "demo-data",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "synopsis": "CNP Mart offline-first POS terminal",
+      "maintainer": "CNP Mart <it@cnpmart.local>",
+      "artifactName": "CNP-Mart-POS-${version}.${ext}"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "artifactName": "CNP-Mart-POS-${version}-Setup.${ext}"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "npmRebuild": true
   }
 }

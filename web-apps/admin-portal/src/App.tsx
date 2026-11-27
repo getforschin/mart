@@ -1,50 +1,32 @@
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
-import { ExpiryDashboardPage } from './pages/ExpiryDashboardPage';
+import { useMemo } from 'react';
+import { AppShell, MartAppProvider, createOnlinePort } from '@mart/app';
+import '@mart/app/styles.css';
 import './styles/global.css';
 
-function AppLayout(): JSX.Element {
-  return (
-    <div className="app-layout">
-      <nav className="sidebar">
-        <div className="sidebar__brand">
-          <h1>Mart Admin</h1>
-          <span>Omnichannel Control</span>
-        </div>
-        <ul className="sidebar__nav">
-          <li>
-            <NavLink to="/" end className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-              Expiry Dashboard
-            </NavLink>
-          </li>
-          <li>
-            <NavLink to="/lots" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-              Lot Tracking
-            </NavLink>
-          </li>
-        </ul>
-      </nav>
-      <main className="main-content">
-        <Routes>
-          <Route path="/" element={<ExpiryDashboardPage />} />
-          <Route
-            path="/lots"
-            element={
-              <div className="placeholder-page">
-                <h2>Lot Tracking</h2>
-                <p>Integrated with central-backend ProductLot inventory endpoints.</p>
-              </div>
-            }
-          />
-        </Routes>
-      </main>
-    </div>
-  );
-}
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
+const TENANT_ID = import.meta.env.VITE_TENANT_ID ?? '00000000-0000-0000-0000-000000000001';
+const FACILITY_ID = import.meta.env.VITE_FACILITY_ID ?? '00000000-0000-0000-0000-000000000002';
 
 export default function App(): JSX.Element {
+  const port = useMemo(
+    () =>
+      createOnlinePort({
+        apiBaseUrl: API_BASE.replace(/\/$/, ''),
+        tenantId: localStorage.getItem('mart_tenant_id') ?? TENANT_ID,
+        facilityId: FACILITY_ID,
+        getToken: () => localStorage.getItem('mart_token') ?? 'dev',
+        session: {
+          displayName: 'Admin',
+          facilityName: 'Central Admin',
+          role: 'MART_ADMIN',
+        },
+      }),
+    [],
+  );
+
   return (
-    <BrowserRouter>
-      <AppLayout />
-    </BrowserRouter>
+    <MartAppProvider port={port}>
+      <AppShell brand="Mart Admin" initialModule="dashboard" />
+    </MartAppProvider>
   );
 }

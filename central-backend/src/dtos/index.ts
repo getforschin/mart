@@ -103,6 +103,11 @@ export interface SyncOrderItemDto {
   unitPrice: number;
   calculatedTax: number;
   netAmount: number;
+  barcode?: string | null;
+  batchNumber?: string | null;
+  mrp?: number;
+  discountPercent?: number;
+  discountAmount?: number;
 }
 
 export interface SyncOrderInvoiceDto {
@@ -110,10 +115,23 @@ export interface SyncOrderInvoiceDto {
   tenantId: string;
   facilityId: string;
   cashierId: string;
+  cashierName?: string | null;
   customerPayload: CustomerPayload;
+  invoiceNumber?: string | null;
+  saleType?: string;
+  status?: string;
+  customerMobile?: string | null;
   subtotal: number;
+  taxableValue?: number;
   taxTotal: number;
   discountTotal: number;
+  billDiscountPercent?: number;
+  redeemAmount?: number;
+  grossSale?: number;
+  roundOff?: number;
+  amountTendered?: number;
+  changeDue?: number;
+  returnOfInvoiceId?: string | null;
   finalPayable: number;
   paymentChannel: PaymentChannel;
   originSource: OrderOriginSource;
@@ -144,15 +162,17 @@ export interface SyncCustomerDto {
 }
 
 export interface SyncPurchaseItemDto {
-  productId: string;
+  productId?: string;
   productName: string;
   barcode?: string;
+  sku?: string;
   quantity: number;
   purchaseRate: number;
   mrp: number;
   saleRate: number;
   gstPercent?: number;
   lotId?: string | null;
+  isNewProduct?: boolean;
 }
 
 export interface SyncPurchaseDto {
@@ -166,7 +186,37 @@ export interface SyncPurchaseDto {
   remark?: string;
   status?: string;
   otherCharges?: number;
+  paidAmount?: number;
+  paymentMode?: string;
   items: SyncPurchaseItemDto[];
+}
+
+export interface SyncSupplierPaymentDto {
+  id: string;
+  tenantId: string;
+  supplierId: string;
+  amount: number;
+  paymentMode: string;
+  entryDate: string;
+  remark?: string;
+  referenceNo?: string;
+}
+
+export interface SyncExpenseDto {
+  id: string;
+  tenantId: string;
+  facilityId?: string;
+  expenseDate: string;
+  amount: number;
+  purpose: string;
+  category?: string;
+  paymentMode?: string;
+  payee?: string;
+  notes?: string;
+  scheduleId?: string;
+  periodKey?: string;
+  isRecurringGenerated?: boolean;
+  createdBy?: string;
 }
 
 export interface SyncStockEventDto {
@@ -191,12 +241,21 @@ export interface SyncPushRequestDto {
   attendanceRecords?: SyncAttendanceDto[];
   customers?: SyncCustomerDto[];
   purchases?: SyncPurchaseDto[];
+  supplierPayments?: SyncSupplierPaymentDto[];
+  expenses?: SyncExpenseDto[];
   stockEvents?: SyncStockEventDto[];
 }
 
 export interface SyncEventResultDto {
   clientEventId: string;
-  eventType: 'ORDER_INVOICE' | 'WORKFORCE_ATTENDANCE' | 'CUSTOMER' | 'PURCHASE' | 'STOCK_EVENT';
+  eventType:
+    | 'ORDER_INVOICE'
+    | 'WORKFORCE_ATTENDANCE'
+    | 'CUSTOMER'
+    | 'PURCHASE'
+    | 'STOCK_EVENT'
+    | 'SUPPLIER_PAYMENT'
+    | 'EXPENSE';
   status: SyncResultStatus;
   message: string;
 }

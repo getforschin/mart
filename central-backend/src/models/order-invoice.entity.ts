@@ -73,6 +73,21 @@ export class OrderInvoice {
   @Column({ type: 'varchar', length: 64, nullable: true })
   couponCode!: string | null;
 
+  @Column({ type: 'decimal', precision: 8, scale: 2, default: 0 })
+  billDiscountPercent!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  amountTendered!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  changeDue!: number;
+
+  @Column({ type: 'uuid', nullable: true })
+  returnOfInvoiceId!: string | null;
+
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  cashierName!: string | null;
+
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   finalPayable!: number;
 

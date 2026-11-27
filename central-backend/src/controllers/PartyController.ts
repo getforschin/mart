@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Post, Query, Route, Security, SuccessResponse, Tags } from 'tsoa';
+import { Body, Controller, Get, Path, Post, Query, Route, Security, SuccessResponse, Tags } from 'tsoa';
 import { erpService } from '../core/services/erp.service';
-import { Customer, Supplier } from '../models';
+import { AccountEntry, Customer, Supplier } from '../models';
 
 interface CustomerBody {
   id?: string;
@@ -59,5 +59,33 @@ export class PartyController extends Controller {
   public async upsertSupplier(@Query() tenantId: string, @Body() body: SupplierBody): Promise<Supplier> {
     this.setStatus(201);
     return erpService.upsertSupplier(tenantId, body);
+  }
+
+  @Post('suppliers/{supplierId}/payments')
+  @Security('tenantHeader')
+  @SuccessResponse(201, 'Created')
+  public async paySupplier(
+    @Query() tenantId: string,
+    @Path() supplierId: string,
+    @Body()
+    body: {
+      amount: number;
+      paymentMode: string;
+      entryDate: string;
+      remark?: string;
+      referenceNo?: string;
+    },
+  ): Promise<{ supplier: Supplier; entry: AccountEntry }> {
+    this.setStatus(201);
+    return erpService.paySupplier(tenantId, { ...body, supplierId });
+  }
+
+  @Get('suppliers/{supplierId}/ledger')
+  @Security('tenantHeader')
+  public async supplierLedger(
+    @Query() tenantId: string,
+    @Path() supplierId: string,
+  ): Promise<Record<string, unknown>> {
+    return erpService.getSupplierLedger(tenantId, supplierId);
   }
 }

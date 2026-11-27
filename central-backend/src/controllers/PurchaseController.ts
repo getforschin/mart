@@ -11,15 +11,22 @@ interface PurchaseBody {
   remark?: string;
   status?: PurchaseStatus;
   otherCharges?: number;
+  paidAmount?: number;
+  paymentMode?: string;
   items: Array<{
-    productId: string;
+    productId?: string;
     productName: string;
     barcode?: string;
+    sku?: string;
+    brand?: string;
+    category?: string;
+    hsnCode?: string;
     quantity: number;
     purchaseRate: number;
     mrp: number;
     saleRate: number;
     gstPercent?: number;
+    isNewProduct?: boolean;
   }>;
 }
 

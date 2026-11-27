@@ -19,16 +19,23 @@ import {
   SmsMessage,
   StockMovement,
   StockTransfer,
+  StocktakeLine,
+  StocktakeSession,
   Supplier,
   User,
   AccountEntryType,
   EcommerceOrderStatus,
+  Expense,
+  ExpenseCategory,
+  ExpenseSchedule,
   GstMode,
   PartyType,
+  PurchasePaymentStatus,
   PurchaseStatus,
   SchemeType,
   SmsChannel,
   StockMovementType,
+  StocktakeStatus,
   TransferStatus,
   UserRole,
   PaymentChannel,
@@ -37,6 +44,13 @@ import {
 import bcrypt from 'bcryptjs';
 import { createAccessToken } from '../security/jwt';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  applySupplierPayment,
+  computeProfitLoss,
+  computePurchasePayment,
+  periodKeyFromDate,
+  shouldPostSchedule,
+} from './purchase-finance';
 
 function num(value: unknown): number {
   return Number(value ?? 0);
@@ -115,21 +129,104 @@ export class ErpService {
     ]);
 
     const sales = await ds.getRepository(OrderInvoice).find({ where: { tenantId } });
-    const salesTotal = sales.reduce((sum, s) => sum + num(s.finalPayable), 0);
     const purchases = await ds.getRepository(Purchase).find({ where: { tenantId, status: PurchaseStatus.COMPLETED } });
     const purchaseTotal = purchases.reduce((sum, p) => sum + num(p.grandTotal), 0);
 
-    const lowStock = await ds
-      .getRepository(Product)
-      .createQueryBuilder('p')
-      .where('p.tenantId = :tenantId', { tenantId })
-      .andWhere('p.isActive = true')
-      .andWhere('p.minStock > 0')
-      .getMany();
+    const completedSales = sales.filter((s) => s.status === 'COMPLETED' && s.saleType !== 'RETURN');
+    const returnSales = sales.filter((s) => s.saleType === 'RETURN' && s.status === 'COMPLETED');
+    const netSalesTotal =
+      completedSales.reduce((sum, s) => sum + num(s.finalPayable), 0) -
+      returnSales.reduce((sum, s) => sum + num(s.finalPayable), 0);
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const monthKey = todayKey.slice(0, 7);
+    const todaySales = completedSales.filter((s) => String(s.createdAt).slice(0, 10) === todayKey);
+    const todayReturns = returnSales.filter((s) => String(s.createdAt).slice(0, 10) === todayKey);
+    const todayOrders = [...todaySales, ...todayReturns].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+    const todayNet =
+      todaySales.reduce((sum, s) => sum + num(s.finalPayable), 0) -
+      todayReturns.reduce((sum, s) => sum + num(s.finalPayable), 0);
+    const discountTotalToday = todaySales.reduce((sum, s) => sum + num(s.discountTotal), 0);
+
+    const hourlyMap = new Map<number, { orders: number; sales: number }>();
+    for (let h = 0; h < 24; h += 1) hourlyMap.set(h, { orders: 0, sales: 0 });
+    for (const sale of todayOrders) {
+      const hour = new Date(sale.createdAt).getHours();
+      const bucket = hourlyMap.get(hour) ?? { orders: 0, sales: 0 };
+      const signed = sale.saleType === 'RETURN' ? -num(sale.finalPayable) : num(sale.finalPayable);
+      bucket.orders += 1;
+      bucket.sales += signed;
+      hourlyMap.set(hour, bucket);
+    }
+    const todayHourlyOrders = Array.from(hourlyMap.entries()).map(([hour, v]) => ({
+      hour,
+      label: `${String(hour).padStart(2, '0')}:00`,
+      orders: v.orders,
+      sales: Math.round(v.sales * 100) / 100,
+    }));
+
+    const paymentMixMap = new Map<string, number>();
+    for (const sale of todaySales) {
+      const channel = String(sale.paymentChannel ?? 'OTHER');
+      paymentMixMap.set(channel, (paymentMixMap.get(channel) ?? 0) + num(sale.finalPayable));
+    }
+    const paymentMixToday = Array.from(paymentMixMap.entries()).map(([channel, amount]) => ({
+      channel,
+      amount: Math.round(amount * 100) / 100,
+    }));
+
+    const newCustomersThisMonth = await ds
+      .getRepository(Customer)
+      .createQueryBuilder('c')
+      .where('c.tenantId = :tenantId', { tenantId })
+      .andWhere('c.isActive = true')
+      .andWhere(`to_char(c.createdAt, 'YYYY-MM') = :monthKey`, { monthKey })
+      .getCount();
+
+    const stockRows = await ds.getRepository(LotInventoryStock).find({ relations: ['lot', 'lot.product'] });
+    const tenantStock = stockRows.filter((r) => r.lot?.product?.tenantId === tenantId);
+    const outOfStockCount = tenantStock.filter((r) => num(r.quantityOnHand) <= 0).length;
+    const stockValueAtCost = tenantStock.reduce(
+      (sum, r) => sum + num(r.quantityOnHand) * num(r.lot?.costPrice ?? 0),
+      0,
+    );
+
+    const qtyByProduct = new Map<
+      string,
+      { productId: string; productName: string; sku: string; qty: number; minStock: number }
+    >();
+    for (const row of tenantStock) {
+      const product = row.lot?.product;
+      if (!product) continue;
+      const prev = qtyByProduct.get(product.id) ?? {
+        productId: product.id,
+        productName: product.name,
+        sku: product.sku,
+        qty: 0,
+        minStock: num(product.minStock),
+      };
+      prev.qty += num(row.quantityOnHand);
+      qtyByProduct.set(product.id, prev);
+    }
+    const lowStockItems = Array.from(qtyByProduct.values())
+      .filter((p) => p.qty <= 0 || (p.minStock > 0 && p.qty <= p.minStock) || (p.minStock <= 0 && p.qty > 0 && p.qty <= 5))
+      .sort((a, b) => a.qty - b.qty)
+      .slice(0, 8)
+      .map((p) => ({
+        productId: p.productId,
+        productName: p.productName,
+        sku: p.sku,
+        quantityOnHand: p.qty,
+        minStock: p.minStock,
+      }));
 
     return {
+      // Canonical + UI aliases
       productCount,
+      totalProducts: productCount,
       customerCount,
+      totalCustomers: customerCount,
       supplierCount,
       purchaseCount,
       saleCount,
@@ -137,9 +234,20 @@ export class ErpService {
       activeSchemes,
       ecommerceOrders,
       criticalStock,
-      salesTotal: Math.round(salesTotal * 100) / 100,
+      salesTotal: Math.round(netSalesTotal * 100) / 100,
+      totalSales: Math.round(todayNet * 100) / 100,
+      todayNetSales: Math.round(todayNet * 100) / 100,
       purchaseTotal: Math.round(purchaseTotal * 100) / 100,
-      lowStockCount: lowStock.length,
+      lowStockCount: lowStockItems.length,
+      lowStockItems,
+      todayInvoiceCount: todayOrders.length,
+      todayOrderCount: todayOrders.length,
+      todayHourlyOrders,
+      paymentMixToday,
+      newCustomersThisMonth,
+      discountTotalToday: Math.round(discountTotalToday * 100) / 100,
+      outOfStockCount,
+      stockValueAtCost: Math.round(stockValueAtCost * 100) / 100,
       recentSales: recentSales.map((s) => ({
         id: s.id,
         invoiceNumber: s.invoiceNumber,
@@ -308,15 +416,22 @@ export class ErpService {
       remark?: string;
       status?: PurchaseStatus;
       otherCharges?: number;
+      paidAmount?: number;
+      paymentMode?: string;
       items: Array<{
-        productId: string;
+        productId?: string;
         productName: string;
         barcode?: string;
+        sku?: string;
+        brand?: string;
+        category?: string;
+        hsnCode?: string;
         quantity: number;
         purchaseRate: number;
         mrp: number;
         saleRate: number;
         gstPercent?: number;
+        isNewProduct?: boolean;
       }>;
     },
   ): Promise<Purchase> {
@@ -326,18 +441,80 @@ export class ErpService {
         const existing = await manager.findOne(Purchase, { where: { id: payload.id }, relations: ['items'] });
         if (existing) return existing;
       }
-      const items = payload.items.map((item) => {
+      if (!payload.items?.length) {
+        throw Object.assign(new Error('Purchase needs at least one line'), { status: 400 });
+      }
+
+      const resolvedItems: PurchaseItem[] = [];
+      for (const item of payload.items) {
+        let productId = item.productId;
+        if (productId && !item.isNewProduct) {
+          const product = await manager.findOne(Product, { where: { id: productId, tenantId } });
+          if (!product) {
+            throw Object.assign(new Error(`Product not found: ${item.productName}`), { status: 400 });
+          }
+        } else {
+          const existingById =
+            productId != null
+              ? await manager.findOne(Product, { where: { id: productId, tenantId } })
+              : null;
+          if (existingById) {
+            productId = existingById.id;
+          } else {
+            const sku =
+              (item.sku || item.barcode || `SKU-${Date.now()}-${Math.floor(Math.random() * 999)}`).slice(
+                0,
+                64,
+              );
+            const barcode = (item.barcode || sku).slice(0, 64);
+            const created = await manager.save(
+              manager.create(Product, {
+                ...(productId ? { id: productId } : {}),
+                tenantId,
+                name: item.productName,
+                sku,
+                baseBarcode: barcode,
+                brand: item.brand ?? null,
+                category: item.category ?? null,
+                hsnCode: item.hsnCode ?? null,
+                unit: 'PCS',
+                gstPercent: item.gstPercent ?? 0,
+                saleRate: item.saleRate,
+                mrp: item.mrp,
+                purchaseRate: item.purchaseRate,
+                minStock: 0,
+                maxStock: 0,
+                isActive: true,
+                showOnEcommerce: false,
+              }),
+            );
+            productId = created.id;
+          }
+        }
+
         const lineTotal = item.quantity * item.purchaseRate;
-        return manager.create(PurchaseItem, {
-          ...item,
-          lotId: null,
-          gstPercent: item.gstPercent ?? 0,
-          lineTotal,
-        });
-      });
-      const subtotal = items.reduce((s, i) => s + num(i.lineTotal), 0);
-      const taxTotal = items.reduce((s, i) => s + num(i.lineTotal) * (num(i.gstPercent) / 100), 0);
+        resolvedItems.push(
+          manager.create(PurchaseItem, {
+            productId,
+            productName: item.productName,
+            barcode: item.barcode ?? null,
+            quantity: item.quantity,
+            purchaseRate: item.purchaseRate,
+            mrp: item.mrp,
+            saleRate: item.saleRate,
+            lotId: null,
+            gstPercent: 0,
+            lineTotal,
+          }),
+        );
+      }
+
+      const subtotal = resolvedItems.reduce((s, i) => s + num(i.lineTotal), 0);
+      const taxTotal = 0;
       const otherCharges = payload.otherCharges ?? 0;
+      const grandTotal = subtotal + taxTotal + otherCharges;
+      const pay = computePurchasePayment(grandTotal, payload.paidAmount ?? 0);
+
       const purchase = manager.create(Purchase, {
         ...(payload.id ? { id: payload.id } : {}),
         tenantId,
@@ -351,15 +528,18 @@ export class ErpService {
         subtotal,
         taxTotal,
         otherCharges,
-        grandTotal: subtotal + taxTotal + otherCharges,
-        items,
+        grandTotal,
+        paidAmount: pay.paidAmount,
+        dueAmount: pay.dueAmount,
+        paymentStatus: pay.paymentStatus as PurchasePaymentStatus,
+        paymentMode: pay.paidAmount > 0 ? (payload.paymentMode ?? 'CASH') : null,
+        items: resolvedItems,
       });
       const saved = await manager.save(purchase);
 
       if (saved.status === PurchaseStatus.COMPLETED) {
         for (const item of saved.items) {
-          const product = await manager.findOne(Product, { where: { id: item.productId, tenantId } });
-          if (!product) continue;
+          const product = await manager.findOneOrFail(Product, { where: { id: item.productId, tenantId } });
           let lot = await manager
             .getRepository(ProductLot)
             .createQueryBuilder('lot')
@@ -408,9 +588,117 @@ export class ErpService {
             }),
           );
         }
+
+        const supplier = await manager.findOne(Supplier, { where: { id: payload.supplierId, tenantId } });
+        if (supplier && pay.dueAmount > 0) {
+          supplier.outstandingDue = num(supplier.outstandingDue) + pay.dueAmount;
+          await manager.save(supplier);
+          await manager.save(
+            manager.create(AccountEntry, {
+              tenantId,
+              entryType: AccountEntryType.BILL,
+              accountHeadId: null,
+              partyType: PartyType.SUPPLIER,
+              partyId: supplier.id,
+              partyName: supplier.name,
+              entryDate: payload.invoiceDate,
+              amount: pay.dueAmount,
+              paymentMode: null,
+              narration: `Purchase due ${saved.invoiceNumber ?? saved.id}`,
+              referenceNo: saved.id,
+            }),
+          );
+        }
+        if (supplier && pay.paidAmount > 0) {
+          await manager.save(
+            manager.create(AccountEntry, {
+              tenantId,
+              entryType: AccountEntryType.PAYMENT,
+              accountHeadId: null,
+              partyType: PartyType.SUPPLIER,
+              partyId: supplier.id,
+              partyName: supplier.name,
+              entryDate: payload.invoiceDate,
+              amount: pay.paidAmount,
+              paymentMode: saved.paymentMode,
+              narration: `Purchase payment ${saved.invoiceNumber ?? saved.id}`,
+              referenceNo: saved.id,
+            }),
+          );
+        }
       }
       return manager.findOneOrFail(Purchase, { where: { id: saved.id }, relations: ['items'] });
     });
+  }
+
+  async paySupplier(
+    tenantId: string,
+    payload: {
+      id?: string;
+      supplierId: string;
+      amount: number;
+      paymentMode: string;
+      entryDate: string;
+      remark?: string;
+      referenceNo?: string;
+    },
+  ): Promise<{ supplier: Supplier; entry: AccountEntry }> {
+    const ds = getDataSource();
+    return ds.transaction(async (manager) => {
+      if (payload.id) {
+        const existing = await manager.findOne(AccountEntry, { where: { id: payload.id, tenantId } });
+        if (existing) {
+          const supplier = await manager.findOneOrFail(Supplier, {
+            where: { id: payload.supplierId, tenantId },
+          });
+          return { supplier, entry: existing };
+        }
+      }
+      const supplier = await manager.findOne(Supplier, { where: { id: payload.supplierId, tenantId } });
+      if (!supplier) throw Object.assign(new Error('Supplier not found'), { status: 404 });
+      const { newDue, applied } = applySupplierPayment(num(supplier.outstandingDue), payload.amount);
+      if (applied <= 0) throw Object.assign(new Error('Nothing to pay'), { status: 400 });
+      supplier.outstandingDue = newDue;
+      await manager.save(supplier);
+      const entry = await manager.save(
+        manager.create(AccountEntry, {
+          ...(payload.id ? { id: payload.id } : {}),
+          tenantId,
+          entryType: AccountEntryType.PAYMENT,
+          accountHeadId: null,
+          partyType: PartyType.SUPPLIER,
+          partyId: supplier.id,
+          partyName: supplier.name,
+          entryDate: payload.entryDate,
+          amount: applied,
+          paymentMode: payload.paymentMode,
+          narration: payload.remark ?? 'Supplier payment',
+          referenceNo: payload.referenceNo ?? payload.id ?? null,
+        }),
+      );
+      return { supplier, entry };
+    });
+  }
+
+  async getSupplierLedger(tenantId: string, supplierId: string): Promise<Record<string, unknown>> {
+    const supplier = await getDataSource().getRepository(Supplier).findOne({ where: { id: supplierId, tenantId } });
+    if (!supplier) throw Object.assign(new Error('Supplier not found'), { status: 404 });
+    const purchases = await getDataSource().getRepository(Purchase).find({
+      where: { tenantId, supplierId },
+      order: { invoiceDate: 'DESC', createdAt: 'DESC' },
+      take: 100,
+    });
+    const entries = await getDataSource().getRepository(AccountEntry).find({
+      where: { tenantId, partyType: PartyType.SUPPLIER, partyId: supplierId },
+      order: { entryDate: 'DESC', createdAt: 'DESC' },
+      take: 200,
+    });
+    return {
+      supplier,
+      outstandingDue: num(supplier.outstandingDue),
+      purchases,
+      entries,
+    };
   }
 
   // ---------- Stock ----------
@@ -587,6 +875,139 @@ export class ErpService {
     return getDataSource().getRepository(StockMovement).find({ where: { tenantId }, order: { createdAt: 'DESC' }, take: 200 });
   }
 
+  // ---------- Stocktake ----------
+  async startStocktake(
+    tenantId: string,
+    payload: { facilityId: string; startedBy: string; remark?: string },
+  ): Promise<StocktakeSession> {
+    const ds = getDataSource();
+    return ds.transaction(async (manager) => {
+      const session = await manager.save(
+        manager.create(StocktakeSession, {
+          tenantId,
+          facilityId: payload.facilityId,
+          startedBy: payload.startedBy,
+          status: StocktakeStatus.IN_PROGRESS,
+          remark: payload.remark ?? null,
+          committedAt: null,
+        }),
+      );
+
+      const stocks = await manager.find(LotInventoryStock, {
+        where: { facilityId: payload.facilityId },
+        relations: ['lot'],
+      });
+
+      for (const stock of stocks) {
+        await manager.save(
+          manager.create(StocktakeLine, {
+            sessionId: session.id,
+            productId: stock.lot.productId,
+            lotId: stock.lotId,
+            expectedQty: num(stock.quantityOnHand),
+            countedQty: null,
+            remark: null,
+          }),
+        );
+      }
+
+      return manager.findOneOrFail(StocktakeSession, {
+        where: { id: session.id },
+        relations: ['lines'],
+      });
+    });
+  }
+
+  async listStocktakes(tenantId: string, facilityId?: string): Promise<StocktakeSession[]> {
+    const where: { tenantId: string; facilityId?: string } = { tenantId };
+    if (facilityId) where.facilityId = facilityId;
+    return getDataSource()
+      .getRepository(StocktakeSession)
+      .find({ where, relations: ['lines'], order: { createdAt: 'DESC' }, take: 50 });
+  }
+
+  async getStocktake(tenantId: string, sessionId: string): Promise<StocktakeSession> {
+    const session = await getDataSource()
+      .getRepository(StocktakeSession)
+      .findOne({ where: { id: sessionId, tenantId }, relations: ['lines'] });
+    if (!session) throw Object.assign(new Error('Stocktake not found'), { status: 404 });
+    return session;
+  }
+
+  async updateStocktakeCount(
+    tenantId: string,
+    payload: { sessionId: string; lotId: string; countedQty: number; remark?: string },
+  ): Promise<StocktakeSession> {
+    const session = await this.getStocktake(tenantId, payload.sessionId);
+    if (session.status !== StocktakeStatus.IN_PROGRESS) {
+      throw Object.assign(new Error('Stocktake is not in progress'), { status: 400 });
+    }
+    const line = session.lines.find((l) => l.lotId === payload.lotId);
+    if (!line) throw Object.assign(new Error('Stocktake line not found'), { status: 404 });
+    line.countedQty = payload.countedQty;
+    line.remark = payload.remark ?? line.remark;
+    await getDataSource().getRepository(StocktakeLine).save(line);
+    return this.getStocktake(tenantId, payload.sessionId);
+  }
+
+  async commitStocktake(tenantId: string, sessionId: string): Promise<StocktakeSession> {
+    const ds = getDataSource();
+    return ds.transaction(async (manager) => {
+      const session = await manager.findOne(StocktakeSession, {
+        where: { id: sessionId, tenantId },
+        relations: ['lines'],
+      });
+      if (!session) throw Object.assign(new Error('Stocktake not found'), { status: 404 });
+      if (session.status !== StocktakeStatus.IN_PROGRESS) {
+        throw Object.assign(new Error('Stocktake is not in progress'), { status: 400 });
+      }
+
+      for (const line of session.lines) {
+        if (line.countedQty == null) continue;
+        const expected = num(line.expectedQty);
+        const counted = num(line.countedQty);
+        const variance = counted - expected;
+        if (variance === 0) continue;
+
+        const stock = await manager.findOne(LotInventoryStock, {
+          where: { lotId: line.lotId, facilityId: session.facilityId },
+        });
+        if (!stock) continue;
+        stock.quantityOnHand = counted;
+        await manager.save(stock);
+        await manager.save(
+          manager.create(StockMovement, {
+            tenantId,
+            facilityId: session.facilityId,
+            productId: line.productId,
+            lotId: line.lotId,
+            movementType: StockMovementType.AUDIT,
+            quantity: Math.abs(variance),
+            remark: `Stocktake ${sessionId} variance ${variance}`,
+            referenceId: sessionId,
+          }),
+        );
+      }
+
+      session.status = StocktakeStatus.COMMITTED;
+      session.committedAt = new Date();
+      await manager.save(session);
+      return manager.findOneOrFail(StocktakeSession, {
+        where: { id: sessionId },
+        relations: ['lines'],
+      });
+    });
+  }
+
+  async cancelStocktake(tenantId: string, sessionId: string): Promise<StocktakeSession> {
+    const session = await this.getStocktake(tenantId, sessionId);
+    if (session.status !== StocktakeStatus.IN_PROGRESS) {
+      throw Object.assign(new Error('Only in-progress stocktakes can be cancelled'), { status: 400 });
+    }
+    session.status = StocktakeStatus.CANCELLED;
+    return getDataSource().getRepository(StocktakeSession).save(session);
+  }
+
   // ---------- Schemes ----------
   async listSchemes(tenantId: string): Promise<Scheme[]> {
     return getDataSource().getRepository(Scheme).find({ where: { tenantId }, order: { createdAt: 'DESC' } });
@@ -612,12 +1033,13 @@ export class ErpService {
   }
 
   // ---------- Sales ----------
-  async listSales(tenantId: string): Promise<OrderInvoice[]> {
+  async listSales(tenantId: string, limit = 3000): Promise<OrderInvoice[]> {
+    const take = Math.min(Math.max(1, limit || 3000), 5000);
     return getDataSource().getRepository(OrderInvoice).find({
       where: { tenantId },
       relations: ['items'],
       order: { createdAt: 'DESC' },
-      take: 200,
+      take,
     });
   }
 
@@ -652,9 +1074,9 @@ export class ErpService {
         stock.quantityOnHand = num(stock.quantityOnHand) - item.quantity;
         await manager.save(stock);
 
-        const product = await manager.findOneOrFail(Product, { where: { id: item.productId } });
+        // Tax-off policy for this cycle: prices are final; GST breakup deferred.
         const net = item.unitPrice * item.quantity;
-        const tax = net * (num(product.gstPercent) / 100);
+        const tax = 0;
         subtotal += net;
         taxTotal += tax;
         orderItems.push(
@@ -665,7 +1087,10 @@ export class ErpService {
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             calculatedTax: tax,
-            netAmount: net + tax,
+            netAmount: net,
+            discountPercent: 0,
+            discountAmount: 0,
+            mrp: item.unitPrice,
           }),
         );
 
@@ -873,22 +1298,219 @@ export class ErpService {
     return repo.save(order);
   }
 
+  // ---------- Expenses ----------
+  async listExpenses(
+    tenantId: string,
+    from?: string,
+    to?: string,
+  ): Promise<Expense[]> {
+    const qb = getDataSource()
+      .getRepository(Expense)
+      .createQueryBuilder('e')
+      .where('e.tenantId = :tenantId', { tenantId })
+      .orderBy('e.expenseDate', 'DESC')
+      .addOrderBy('e.createdAt', 'DESC');
+    if (from) qb.andWhere('e.expenseDate >= :from', { from });
+    if (to) qb.andWhere('e.expenseDate <= :to', { to });
+    return qb.getMany();
+  }
+
+  async createExpense(
+    tenantId: string,
+    payload: {
+      id?: string;
+      facilityId?: string;
+      expenseDate: string;
+      amount: number;
+      purpose: string;
+      category?: ExpenseCategory;
+      paymentMode?: string;
+      payee?: string;
+      notes?: string;
+      createdBy?: string;
+      scheduleId?: string;
+      periodKey?: string;
+      isRecurringGenerated?: boolean;
+    },
+  ): Promise<Expense> {
+    if (payload.amount <= 0) throw Object.assign(new Error('Amount must be positive'), { status: 400 });
+    const repo = getDataSource().getRepository(Expense);
+    if (payload.id) {
+      const existing = await repo.findOne({ where: { id: payload.id, tenantId } });
+      if (existing) return existing;
+    }
+    return repo.save(
+      repo.create({
+        ...(payload.id ? { id: payload.id } : {}),
+        tenantId,
+        facilityId: payload.facilityId ?? null,
+        expenseDate: payload.expenseDate,
+        amount: payload.amount,
+        purpose: payload.purpose.trim(),
+        category: payload.category ?? ExpenseCategory.MISC,
+        paymentMode: payload.paymentMode ?? 'CASH',
+        payee: payload.payee ?? null,
+        notes: payload.notes ?? null,
+        createdBy: payload.createdBy ?? null,
+        scheduleId: payload.scheduleId ?? null,
+        periodKey: payload.periodKey ?? null,
+        isRecurringGenerated: payload.isRecurringGenerated ?? false,
+      }),
+    );
+  }
+
+  async listExpenseSchedules(tenantId: string): Promise<ExpenseSchedule[]> {
+    return getDataSource()
+      .getRepository(ExpenseSchedule)
+      .find({ where: { tenantId }, order: { purpose: 'ASC' } });
+  }
+
+  async upsertExpenseSchedule(
+    tenantId: string,
+    payload: Partial<ExpenseSchedule> & {
+      purpose: string;
+      amount: number;
+      dayOfMonth: number;
+    },
+  ): Promise<ExpenseSchedule> {
+    if (payload.dayOfMonth < 1 || payload.dayOfMonth > 28) {
+      throw Object.assign(new Error('dayOfMonth must be 1–28'), { status: 400 });
+    }
+    const repo = getDataSource().getRepository(ExpenseSchedule);
+    let row = payload.id ? await repo.findOne({ where: { id: payload.id, tenantId } }) : null;
+    if (!row) row = repo.create({ tenantId, isActive: true });
+    Object.assign(row, {
+      purpose: payload.purpose,
+      category: payload.category ?? row.category ?? ExpenseCategory.MISC,
+      amount: payload.amount,
+      dayOfMonth: payload.dayOfMonth,
+      paymentMode: payload.paymentMode ?? row.paymentMode ?? 'BANK',
+      payee: payload.payee ?? row.payee ?? null,
+      notes: payload.notes ?? row.notes ?? null,
+      facilityId: payload.facilityId ?? row.facilityId ?? null,
+      isActive: payload.isActive ?? true,
+      startMonth: payload.startMonth ?? row.startMonth ?? null,
+      endMonth: payload.endMonth ?? row.endMonth ?? null,
+    });
+    return repo.save(row);
+  }
+
+  async runExpenseSchedules(tenantId: string, asOf?: string): Promise<{ posted: Expense[] }> {
+    const asOfDate = asOf ?? new Date().toISOString().slice(0, 10);
+    const periodKey = periodKeyFromDate(asOfDate);
+    const asOfDay = Number(asOfDate.slice(8, 10));
+    const schedules = await this.listExpenseSchedules(tenantId);
+    const existing = await getDataSource().getRepository(Expense).find({
+      where: { tenantId, periodKey, isRecurringGenerated: true },
+    });
+    const posted: Expense[] = [];
+    for (const schedule of schedules) {
+      const already = existing.filter((e) => e.scheduleId === schedule.id).map((e) => e.periodKey!);
+      if (
+        !shouldPostSchedule({
+          dayOfMonth: schedule.dayOfMonth,
+          asOfDay,
+          periodKey,
+          alreadyPostedPeriodKeys: already,
+          isActive: schedule.isActive,
+          startMonth: schedule.startMonth,
+          endMonth: schedule.endMonth,
+        })
+      ) {
+        continue;
+      }
+      try {
+        const expense = await this.createExpense(tenantId, {
+          facilityId: schedule.facilityId ?? undefined,
+          expenseDate: asOfDate,
+          amount: num(schedule.amount),
+          purpose: `${schedule.purpose} (${periodKey})`,
+          category: schedule.category,
+          paymentMode: schedule.paymentMode ?? 'BANK',
+          payee: schedule.payee ?? undefined,
+          notes: schedule.notes ?? undefined,
+          scheduleId: schedule.id,
+          periodKey,
+          isRecurringGenerated: true,
+          createdBy: 'schedule-runner',
+        });
+        posted.push(expense);
+      } catch {
+        // Unique violation = already posted — skip
+      }
+    }
+    return { posted };
+  }
+
+  async getProfitLoss(
+    tenantId: string,
+    from: string,
+    to: string,
+  ): Promise<Record<string, unknown>> {
+    const sales = await this.listSales(tenantId);
+    const purchases = await this.listPurchases(tenantId);
+    const expenses = await this.listExpenses(tenantId, from, to);
+
+    const netSales = sales
+      .filter((s) => s.status === 'COMPLETED')
+      .filter((s) => {
+        const d = String(s.createdAt).slice(0, 10);
+        return d >= from && d <= to;
+      })
+      .reduce((sum, s) => {
+        const amt = num(s.finalPayable);
+        return sum + (s.saleType === 'RETURN' ? -amt : amt);
+      }, 0);
+
+    const purchaseSpend = purchases
+      .filter((p) => p.status === PurchaseStatus.COMPLETED)
+      .filter((p) => p.invoiceDate >= from && p.invoiceDate <= to)
+      .reduce((sum, p) => sum + num(p.grandTotal), 0);
+
+    const expenseTotal = expenses.reduce((sum, e) => sum + num(e.amount), 0);
+    const pnl = computeProfitLoss({
+      netSales,
+      purchaseSpend,
+      expenses: expenseTotal,
+    });
+
+    const byCategory: Record<string, number> = {};
+    for (const e of expenses) {
+      byCategory[e.category] = (byCategory[e.category] ?? 0) + num(e.amount);
+    }
+
+    return {
+      from,
+      to,
+      ...pnl,
+      expenseByCategory: byCategory,
+    };
+  }
+
   // ---------- Reports ----------
   async getReports(tenantId: string): Promise<Record<string, unknown>> {
-    const [sales, purchases, customers, suppliers, stock, schemes, ecommerce] = await Promise.all([
-      this.listSales(tenantId),
-      this.listPurchases(tenantId),
-      this.listCustomers(tenantId),
-      this.listSuppliers(tenantId),
-      this.listStock(tenantId),
-      this.listSchemes(tenantId),
-      this.listEcommerceOrders(tenantId),
-    ]);
+    const monthStart = new Date().toISOString().slice(0, 8) + '01';
+    const today = new Date().toISOString().slice(0, 10);
+    const [sales, purchases, customers, suppliers, stock, schemes, ecommerce, expenses, pnl] =
+      await Promise.all([
+        this.listSales(tenantId),
+        this.listPurchases(tenantId),
+        this.listCustomers(tenantId),
+        this.listSuppliers(tenantId),
+        this.listStock(tenantId),
+        this.listSchemes(tenantId),
+        this.listEcommerceOrders(tenantId),
+        this.listExpenses(tenantId, monthStart, today),
+        this.getProfitLoss(tenantId, monthStart, today),
+      ]);
 
-    const saleTotal = sales.reduce((s, x) => s + num(x.finalPayable), 0);
+    const saleTotal = sales
+      .filter((s) => s.status === 'COMPLETED')
+      .reduce((s, x) => s + (x.saleType === 'RETURN' ? -num(x.finalPayable) : num(x.finalPayable)), 0);
     const purchaseTotal = purchases
       .filter((p) => p.status === PurchaseStatus.COMPLETED)
       .reduce((s, x) => s + num(x.grandTotal), 0);
+    const expenseTotal = expenses.reduce((s, e) => s + num(e.amount), 0);
     const customerDue = customers.reduce((s, c) => s + num(c.outstandingDue), 0);
     const supplierDue = suppliers.reduce((s, c) => s + num(c.outstandingDue), 0);
     const stockValue = stock.reduce((s, r) => s + num(r.quantityOnHand) * num(r.costPrice), 0);
@@ -903,13 +1525,19 @@ export class ErpService {
       summary: {
         saleTotal,
         purchaseTotal,
+        expenseTotal,
         customerDue,
         supplierDue,
         stockValue,
-        profitEstimate: saleTotal - purchaseTotal,
+        profitEstimate: computeProfitLoss({
+          netSales: saleTotal,
+          purchaseSpend: purchaseTotal,
+          expenses: expenseTotal,
+        }).result,
         activeSchemes: schemes.filter((s) => s.isActive).length,
         ecommerceOrders: ecommerce.length,
       },
+      profitLoss: pnl,
       gstr1: {
         totalInvoices: sales.length,
         taxableValue: sales.reduce((s, x) => s + num(x.taxableValue || x.subtotal), 0),

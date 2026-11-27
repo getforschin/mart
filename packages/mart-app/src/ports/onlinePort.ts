@@ -124,6 +124,7 @@ export function createOnlinePort(opts: OnlinePortOptions): DataPort {
         mobile: (r.mobile as string | null) ?? null,
         email: (r.email as string | null) ?? null,
         gstin: (r.gstin as string | null) ?? null,
+        outstandingDue: Number(r.outstandingDue ?? 0),
       }));
     },
 
@@ -138,7 +139,130 @@ export function createOnlinePort(opts: OnlinePortOptions): DataPort {
         mobile: (row.mobile as string | null) ?? null,
         email: (row.email as string | null) ?? null,
         gstin: (row.gstin as string | null) ?? null,
+        outstandingDue: Number(row.outstandingDue ?? 0),
       };
+    },
+
+    async paySupplier(input) {
+      const row = await api<{ supplier: { outstandingDue: number } }>(
+        opts,
+        `/api/v1/parties/suppliers/${input.supplierId}/payments`,
+        {
+          method: 'POST',
+          body: JSON.stringify(input),
+        },
+      );
+      return { outstandingDue: Number(row.supplier?.outstandingDue ?? 0) };
+    },
+
+    async getSupplierLedger(supplierId) {
+      return api(opts, `/api/v1/parties/suppliers/${supplierId}/ledger`);
+    },
+
+    async listExpenses(from, to) {
+      const q = [
+        from ? `from=${encodeURIComponent(from)}` : '',
+        to ? `to=${encodeURIComponent(to)}` : '',
+      ]
+        .filter(Boolean)
+        .join('&');
+      const rows = await api<Array<Record<string, unknown>>>(
+        opts,
+        `/api/v1/expenses${q ? `?${q}` : ''}`,
+      );
+      return rows.map((r) => ({
+        id: String(r.id),
+        expenseDate: String(r.expenseDate),
+        amount: Number(r.amount),
+        purpose: String(r.purpose),
+        category: String(r.category ?? 'MISC'),
+        paymentMode: (r.paymentMode as string | null) ?? null,
+        payee: (r.payee as string | null) ?? null,
+        notes: (r.notes as string | null) ?? null,
+        isRecurringGenerated: Boolean(r.isRecurringGenerated),
+      }));
+    },
+
+    async createExpense(input) {
+      const row = await api<Record<string, unknown>>(opts, '/api/v1/expenses', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      return {
+        id: String(row.id),
+        expenseDate: String(row.expenseDate ?? input.expenseDate),
+        amount: Number(row.amount ?? input.amount),
+        purpose: String(row.purpose ?? input.purpose),
+        category: String(row.category ?? input.category ?? 'MISC'),
+        paymentMode: (row.paymentMode as string | null) ?? null,
+        payee: (row.payee as string | null) ?? null,
+        notes: (row.notes as string | null) ?? null,
+      };
+    },
+
+    async listExpenseSchedules() {
+      const rows = await api<Array<Record<string, unknown>>>(opts, '/api/v1/expenses/schedules');
+      return rows.map((r) => ({
+        id: String(r.id),
+        purpose: String(r.purpose),
+        category: String(r.category ?? 'MISC'),
+        amount: Number(r.amount),
+        dayOfMonth: Number(r.dayOfMonth),
+        paymentMode: (r.paymentMode as string | null) ?? null,
+        payee: (r.payee as string | null) ?? null,
+        notes: (r.notes as string | null) ?? null,
+        isActive: Boolean(r.isActive),
+      }));
+    },
+
+    async upsertExpenseSchedule(input) {
+      const row = await api<Record<string, unknown>>(opts, '/api/v1/expenses/schedules', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      return {
+        id: String(row.id),
+        purpose: String(row.purpose ?? input.purpose),
+        category: String(row.category ?? input.category ?? 'MISC'),
+        amount: Number(row.amount ?? input.amount),
+        dayOfMonth: Number(row.dayOfMonth ?? input.dayOfMonth),
+        paymentMode: (row.paymentMode as string | null) ?? null,
+        payee: (row.payee as string | null) ?? null,
+        notes: (row.notes as string | null) ?? null,
+        isActive: Boolean(row.isActive ?? true),
+      };
+    },
+
+    async runExpenseSchedules(asOf) {
+      const q = asOf ? `?asOf=${encodeURIComponent(asOf)}` : '';
+      const row = await api<{ posted: Array<Record<string, unknown>> }>(
+        opts,
+        `/api/v1/expenses/run-schedules${q}`,
+        {
+          method: 'POST',
+          body: '{}',
+        },
+      );
+      return {
+        posted: (row.posted ?? []).map((e) => ({
+          id: String(e.id),
+          expenseDate: String(e.expenseDate ?? ''),
+          amount: Number(e.amount ?? 0),
+          purpose: String(e.purpose ?? ''),
+          category: String(e.category ?? 'MISC'),
+          paymentMode: (e.paymentMode as string | null) ?? null,
+          payee: (e.payee as string | null) ?? null,
+          notes: (e.notes as string | null) ?? null,
+          isRecurringGenerated: Boolean(e.isRecurringGenerated),
+        })),
+      };
+    },
+
+    async getProfitLoss(from, to) {
+      return api(
+        opts,
+        `/api/v1/expenses/profit-loss?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      );
     },
 
     async listProducts(query?: string) {
@@ -223,6 +347,32 @@ export function createOnlinePort(opts: OnlinePortOptions): DataPort {
       });
     },
 
+    async startStocktake(remark) {
+      const startedBy = '00000000-0000-0000-0000-000000000003';
+      return api(opts, '/api/v1/stock/stocktakes', {
+        method: 'POST',
+        body: JSON.stringify({ facilityId, startedBy, remark }),
+      });
+    },
+    async listStocktakes() {
+      return api(opts, `/api/v1/stock/stocktakes?facilityId=${encodeURIComponent(facilityId)}`);
+    },
+    async getStocktake(sessionId) {
+      return api(opts, `/api/v1/stock/stocktakes/${sessionId}`);
+    },
+    async updateStocktakeCount(input) {
+      return api(opts, '/api/v1/stock/stocktakes/count', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    async commitStocktake(sessionId) {
+      return api(opts, `/api/v1/stock/stocktakes/${sessionId}/commit`, { method: 'POST', body: '{}' });
+    },
+    async cancelStocktake(sessionId) {
+      return api(opts, `/api/v1/stock/stocktakes/${sessionId}/cancel`, { method: 'POST', body: '{}' });
+    },
+
     async listPurchases() {
       const rows = await api<Array<Record<string, unknown>>>(opts, '/api/v1/purchases');
       return rows.map((r) => ({
@@ -249,18 +399,24 @@ export function createOnlinePort(opts: OnlinePortOptions): DataPort {
         invoiceNumber: (row.invoiceNumber as string | null) ?? null,
         invoiceDate: String(row.invoiceDate ?? input.invoiceDate),
         grandTotal: Number(row.grandTotal ?? 0),
+        paidAmount: Number(row.paidAmount ?? input.paidAmount ?? 0),
+        dueAmount: Number(row.dueAmount ?? 0),
+        paymentStatus: String(row.paymentStatus ?? ''),
         status: String(row.status ?? 'COMPLETED'),
         isSynced: 1,
       };
     },
 
-    async listSales(limit = 100) {
-      const rows = await api<Array<Record<string, unknown>>>(opts, '/api/v1/sales');
+    async listSales(limit = 3000) {
+      const rows = await api<Array<Record<string, unknown>>>(
+        opts,
+        `/api/v1/sales?limit=${encodeURIComponent(String(limit))}`,
+      );
       return rows.slice(0, limit).map((r) => {
         const payload = (r.customerPayload ?? {}) as Record<string, unknown>;
         return {
           id: String(r.id),
-          invoiceNumber: undefined,
+          invoiceNumber: r.invoiceNumber != null ? String(r.invoiceNumber) : undefined,
           finalPayable: Number(r.finalPayable ?? 0),
           paymentChannel: String(r.paymentChannel ?? ''),
           createdAt: String(r.createdAt ?? ''),
@@ -273,6 +429,8 @@ export function createOnlinePort(opts: OnlinePortOptions): DataPort {
     async createSale(input) {
       const subtotal = input.items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
       const cashierId = '00000000-0000-0000-0000-000000000003';
+      const paymentChannel =
+        input.saleType === 'CREDIT_SALE' ? 'CREDIT' : input.paymentChannel;
       const row = await api<Record<string, unknown>>(opts, '/api/v1/sales', {
         method: 'POST',
         body: JSON.stringify({
@@ -280,9 +438,9 @@ export function createOnlinePort(opts: OnlinePortOptions): DataPort {
           cashierId,
           customerName: input.customerName ?? 'Walk-in',
           customerMobile: input.customerMobile,
-          paymentChannel: input.paymentChannel,
+          paymentChannel,
           originSource: 'WEB_STOREFRONT',
-          discountTotal: 0,
+          discountTotal: input.discountTotal ?? 0,
           items: input.items.map((i) => ({
             productId: i.productId,
             lotId: i.lotId,
@@ -293,12 +451,89 @@ export function createOnlinePort(opts: OnlinePortOptions): DataPort {
       });
       return {
         id: String(row.id),
-        finalPayable: Number(row.finalPayable ?? subtotal),
-        paymentChannel: String(row.paymentChannel ?? input.paymentChannel),
+        invoiceNumber: row.invoiceNumber ? String(row.invoiceNumber) : undefined,
+        finalPayable: Number(row.finalPayable ?? Math.max(0, subtotal - (input.discountTotal ?? 0))),
+        paymentChannel: String(row.paymentChannel ?? paymentChannel),
         createdAt: String(row.createdAt ?? new Date().toISOString()),
         isSynced: 1,
         customerName: input.customerName,
       };
+    },
+
+    async resolveBarcode(barcode) {
+      const encoded = encodeURIComponent(barcode.trim());
+      const result = await api<Record<string, unknown>>(
+        opts,
+        `/api/v1/barcode/resolve/${encoded}?facilityId=${facilityId}`,
+      );
+      const mapLot = (lot: Record<string, unknown> | null | undefined) => {
+        if (!lot) return null;
+        return {
+          id: String(lot.id),
+          productId: String(lot.productId ?? result.productId),
+          batchNumber: String(lot.batchNumber ?? ''),
+          costPrice: Number(lot.costPrice ?? 0),
+          mrp: Number(lot.mrp ?? 0),
+          saleRate: Number(lot.mrp ?? 0),
+          manufactureDate: String(lot.manufactureDate ?? ''),
+          expiryDate: String(lot.expiryDate ?? ''),
+          lotBarcode: String(lot.lotBarcode ?? ''),
+          quantityOnHand: Number(lot.quantityOnHand ?? 0),
+          aisleShelfLocation: (lot.aisleShelfLocation as string | null) ?? null,
+        };
+      };
+      const candidates = Array.isArray(result.candidateLots)
+        ? (result.candidateLots as Array<Record<string, unknown>>).map((l) => mapLot(l)!)
+        : [];
+      return {
+        resolutionType: String(result.resolutionType) as
+          | 'SINGLE_LOT'
+          | 'MULTI_MRP_SELECTION'
+          | 'COMPOSITE_LOT_DIRECT',
+        productId: String(result.productId),
+        productName: String(result.productName),
+        productSku: String(result.productSku),
+        suggestedLot: mapLot(result.suggestedLot as Record<string, unknown> | null),
+        candidateLots: candidates,
+        fifoRecommendation: mapLot(result.fifoRecommendation as Record<string, unknown> | null),
+      };
+    },
+
+    async searchProductsForBilling(query) {
+      const rows = await this.listStock(query);
+      const byProduct = new Map<
+        string,
+        {
+          productId: string;
+          productName: string;
+          productSku: string;
+          baseBarcode: string;
+          quantityOnHand: number;
+          mrpMin: number;
+          mrpMax: number;
+          company?: string;
+        }
+      >();
+      for (const row of rows) {
+        if (row.quantityOnHand <= 0) continue;
+        const existing = byProduct.get(row.productId);
+        if (!existing) {
+          byProduct.set(row.productId, {
+            productId: row.productId,
+            productName: row.productName,
+            productSku: row.sku,
+            baseBarcode: row.lotBarcode,
+            quantityOnHand: row.quantityOnHand,
+            mrpMin: row.mrp,
+            mrpMax: row.mrp,
+          });
+        } else {
+          existing.quantityOnHand += row.quantityOnHand;
+          existing.mrpMin = Math.min(existing.mrpMin, row.mrp);
+          existing.mrpMax = Math.max(existing.mrpMax, row.mrp);
+        }
+      }
+      return [...byProduct.values()].slice(0, 40);
     },
 
     async getReports() {

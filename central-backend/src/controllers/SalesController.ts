@@ -18,8 +18,11 @@ interface SaleBody {
 export class SalesController extends Controller {
   @Get()
   @Security('tenantHeader')
-  public async list(@Query() tenantId: string): Promise<OrderInvoice[]> {
-    return erpService.listSales(tenantId);
+  public async list(
+    @Query() tenantId: string,
+    @Query() limit?: number,
+  ): Promise<OrderInvoice[]> {
+    return erpService.listSales(tenantId, limit);
   }
 
   @Post()

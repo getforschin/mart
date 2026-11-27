@@ -24,6 +24,10 @@ import {
   EcommerceOrder,
   Coupon,
   FinancialSession,
+  StocktakeSession,
+  StocktakeLine,
+  Expense,
+  ExpenseSchedule,
 } from '../../models';
 
 dotenv.config();
@@ -69,6 +73,10 @@ const dataSourceOptions: DataSourceOptions = {
     EcommerceOrder,
     Coupon,
     FinancialSession,
+    StocktakeSession,
+    StocktakeLine,
+    Expense,
+    ExpenseSchedule,
   ],
   migrations: ['dist/core/database/migrations/*.js'],
   extra: {

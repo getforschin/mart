@@ -33,6 +33,21 @@ export class OrderItem {
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   unitPrice!: number;
 
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  barcode!: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  batchNumber!: string | null;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  mrp!: number;
+
+  @Column({ type: 'decimal', precision: 8, scale: 2, default: 0 })
+  discountPercent!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  discountAmount!: number;
+
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   calculatedTax!: number;
 

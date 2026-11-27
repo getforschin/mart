@@ -29,3 +29,13 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS "minStock" integer NOT NULL DEFAUL
 ALTER TABLE products ADD COLUMN IF NOT EXISTS "maxStock" integer NOT NULL DEFAULT 0;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS "imageUrl" character varying(512);
 ALTER TABLE products ADD COLUMN IF NOT EXISTS "showOnEcommerce" boolean NOT NULL DEFAULT false;
+
+-- sync_event_log enum extensions (safe if already present)
+DO $$ BEGIN
+  ALTER TYPE sync_event_log_eventtype_enum ADD VALUE IF NOT EXISTS 'SUPPLIER_PAYMENT';
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TYPE sync_event_log_eventtype_enum ADD VALUE IF NOT EXISTS 'EXPENSE';
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;

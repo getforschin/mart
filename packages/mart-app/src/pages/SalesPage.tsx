@@ -9,7 +9,7 @@ export function SalesPage(): JSX.Element {
 
   useEffect(() => {
     void port
-      .listSales(100)
+      .listSales(3000)
       .then(setRows)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed'));
   }, [port]);

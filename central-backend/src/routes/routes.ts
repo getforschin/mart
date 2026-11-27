@@ -22,6 +22,8 @@ import { PartyController } from './../controllers/PartyController';
 // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
 import { HealthController } from './../controllers/HealthController';
 // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+import { ExpenseController } from './../controllers/ExpenseController';
+// WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
 import { EcommerceController } from './../controllers/EcommerceController';
 // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
 import { DashboardController } from './../controllers/DashboardController';
@@ -56,7 +58,7 @@ const models: TsoaRoute.Models = {
         "dataType": "refObject",
         "properties": {
             "clientEventId": {"dataType":"string","required":true},
-            "eventType": {"dataType":"union","subSchemas":[{"dataType":"enum","enums":["ORDER_INVOICE"]},{"dataType":"enum","enums":["WORKFORCE_ATTENDANCE"]},{"dataType":"enum","enums":["CUSTOMER"]},{"dataType":"enum","enums":["PURCHASE"]},{"dataType":"enum","enums":["STOCK_EVENT"]}],"required":true},
+            "eventType": {"dataType":"union","subSchemas":[{"dataType":"enum","enums":["ORDER_INVOICE"]},{"dataType":"enum","enums":["WORKFORCE_ATTENDANCE"]},{"dataType":"enum","enums":["CUSTOMER"]},{"dataType":"enum","enums":["PURCHASE"]},{"dataType":"enum","enums":["STOCK_EVENT"]},{"dataType":"enum","enums":["SUPPLIER_PAYMENT"]},{"dataType":"enum","enums":["EXPENSE"]}],"required":true},
             "status": {"ref":"SyncResultStatus","required":true},
             "message": {"dataType":"string","required":true},
         },
@@ -124,6 +126,11 @@ const models: TsoaRoute.Models = {
             "unitPrice": {"dataType":"double","required":true},
             "calculatedTax": {"dataType":"double","required":true},
             "netAmount": {"dataType":"double","required":true},
+            "barcode": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}]},
+            "batchNumber": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}]},
+            "mrp": {"dataType":"double"},
+            "discountPercent": {"dataType":"double"},
+            "discountAmount": {"dataType":"double"},
         },
         "additionalProperties": false,
     },
@@ -135,10 +142,23 @@ const models: TsoaRoute.Models = {
             "tenantId": {"dataType":"string","required":true},
             "facilityId": {"dataType":"string","required":true},
             "cashierId": {"dataType":"string","required":true},
+            "cashierName": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}]},
             "customerPayload": {"ref":"CustomerPayload","required":true},
+            "invoiceNumber": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}]},
+            "saleType": {"dataType":"string"},
+            "status": {"dataType":"string"},
+            "customerMobile": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}]},
             "subtotal": {"dataType":"double","required":true},
+            "taxableValue": {"dataType":"double"},
             "taxTotal": {"dataType":"double","required":true},
             "discountTotal": {"dataType":"double","required":true},
+            "billDiscountPercent": {"dataType":"double"},
+            "redeemAmount": {"dataType":"double"},
+            "grossSale": {"dataType":"double"},
+            "roundOff": {"dataType":"double"},
+            "amountTendered": {"dataType":"double"},
+            "changeDue": {"dataType":"double"},
+            "returnOfInvoiceId": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}]},
             "finalPayable": {"dataType":"double","required":true},
             "paymentChannel": {"ref":"PaymentChannel","required":true},
             "originSource": {"ref":"OrderOriginSource","required":true},
@@ -181,15 +201,17 @@ const models: TsoaRoute.Models = {
     "SyncPurchaseItemDto": {
         "dataType": "refObject",
         "properties": {
-            "productId": {"dataType":"string","required":true},
+            "productId": {"dataType":"string"},
             "productName": {"dataType":"string","required":true},
             "barcode": {"dataType":"string"},
+            "sku": {"dataType":"string"},
             "quantity": {"dataType":"double","required":true},
             "purchaseRate": {"dataType":"double","required":true},
             "mrp": {"dataType":"double","required":true},
             "saleRate": {"dataType":"double","required":true},
             "gstPercent": {"dataType":"double"},
             "lotId": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}]},
+            "isNewProduct": {"dataType":"boolean"},
         },
         "additionalProperties": false,
     },
@@ -207,7 +229,45 @@ const models: TsoaRoute.Models = {
             "remark": {"dataType":"string"},
             "status": {"dataType":"string"},
             "otherCharges": {"dataType":"double"},
+            "paidAmount": {"dataType":"double"},
+            "paymentMode": {"dataType":"string"},
             "items": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncPurchaseItemDto"},"required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "SyncSupplierPaymentDto": {
+        "dataType": "refObject",
+        "properties": {
+            "id": {"dataType":"string","required":true},
+            "tenantId": {"dataType":"string","required":true},
+            "supplierId": {"dataType":"string","required":true},
+            "amount": {"dataType":"double","required":true},
+            "paymentMode": {"dataType":"string","required":true},
+            "entryDate": {"dataType":"string","required":true},
+            "remark": {"dataType":"string"},
+            "referenceNo": {"dataType":"string"},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "SyncExpenseDto": {
+        "dataType": "refObject",
+        "properties": {
+            "id": {"dataType":"string","required":true},
+            "tenantId": {"dataType":"string","required":true},
+            "facilityId": {"dataType":"string"},
+            "expenseDate": {"dataType":"string","required":true},
+            "amount": {"dataType":"double","required":true},
+            "purpose": {"dataType":"string","required":true},
+            "category": {"dataType":"string"},
+            "paymentMode": {"dataType":"string"},
+            "payee": {"dataType":"string"},
+            "notes": {"dataType":"string"},
+            "scheduleId": {"dataType":"string"},
+            "periodKey": {"dataType":"string"},
+            "isRecurringGenerated": {"dataType":"boolean"},
+            "createdBy": {"dataType":"string"},
         },
         "additionalProperties": false,
     },
@@ -240,6 +300,8 @@ const models: TsoaRoute.Models = {
             "attendanceRecords": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncAttendanceDto"}},
             "customers": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncCustomerDto"}},
             "purchases": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncPurchaseDto"}},
+            "supplierPayments": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncSupplierPaymentDto"}},
+            "expenses": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncExpenseDto"}},
             "stockEvents": {"dataType":"array","array":{"dataType":"refObject","ref":"SyncStockEventDto"}},
         },
         "additionalProperties": false,
@@ -326,6 +388,45 @@ const models: TsoaRoute.Models = {
             "remark": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
             "referenceId": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
             "createdAt": {"dataType":"datetime","required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "StocktakeStatus": {
+        "dataType": "refEnum",
+        "enums": ["IN_PROGRESS","COMMITTED","CANCELLED"],
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "StocktakeSession": {
+        "dataType": "refObject",
+        "properties": {
+            "id": {"dataType":"string","required":true},
+            "tenantId": {"dataType":"string","required":true},
+            "facilityId": {"dataType":"string","required":true},
+            "startedBy": {"dataType":"string","required":true},
+            "status": {"ref":"StocktakeStatus","required":true},
+            "remark": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "committedAt": {"dataType":"union","subSchemas":[{"dataType":"datetime"},{"dataType":"enum","enums":[null]}],"required":true},
+            "createdAt": {"dataType":"datetime","required":true},
+            "updatedAt": {"dataType":"datetime","required":true},
+            "lines": {"dataType":"array","array":{"dataType":"refObject","ref":"StocktakeLine"},"required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "StocktakeLine": {
+        "dataType": "refObject",
+        "properties": {
+            "id": {"dataType":"string","required":true},
+            "sessionId": {"dataType":"string","required":true},
+            "productId": {"dataType":"string","required":true},
+            "lotId": {"dataType":"string","required":true},
+            "expectedQty": {"dataType":"double","required":true},
+            "countedQty": {"dataType":"union","subSchemas":[{"dataType":"double"},{"dataType":"enum","enums":[null]}],"required":true},
+            "remark": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "createdAt": {"dataType":"datetime","required":true},
+            "updatedAt": {"dataType":"datetime","required":true},
+            "session": {"ref":"StocktakeSession","required":true},
         },
         "additionalProperties": false,
     },
@@ -517,6 +618,11 @@ const models: TsoaRoute.Models = {
             "grossSale": {"dataType":"double","required":true},
             "roundOff": {"dataType":"double","required":true},
             "couponCode": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "billDiscountPercent": {"dataType":"double","required":true},
+            "amountTendered": {"dataType":"double","required":true},
+            "changeDue": {"dataType":"double","required":true},
+            "returnOfInvoiceId": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "cashierName": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
             "finalPayable": {"dataType":"double","required":true},
             "paymentChannel": {"ref":"PaymentChannel","required":true},
             "originSource": {"ref":"OrderOriginSource","required":true},
@@ -633,6 +739,11 @@ const models: TsoaRoute.Models = {
             "lotId": {"dataType":"string","required":true},
             "quantity": {"dataType":"double","required":true},
             "unitPrice": {"dataType":"double","required":true},
+            "barcode": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "batchNumber": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "mrp": {"dataType":"double","required":true},
+            "discountPercent": {"dataType":"double","required":true},
+            "discountAmount": {"dataType":"double","required":true},
             "calculatedTax": {"dataType":"double","required":true},
             "netAmount": {"dataType":"double","required":true},
             "createdAt": {"dataType":"datetime","required":true},
@@ -728,6 +839,11 @@ const models: TsoaRoute.Models = {
         "enums": ["DRAFT","COMPLETED","RETURNED","CANCELLED"],
     },
     // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "PurchasePaymentStatus": {
+        "dataType": "refEnum",
+        "enums": ["UNPAID","PARTIAL","PAID"],
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
     "Purchase": {
         "dataType": "refObject",
         "properties": {
@@ -744,6 +860,10 @@ const models: TsoaRoute.Models = {
             "taxTotal": {"dataType":"double","required":true},
             "otherCharges": {"dataType":"double","required":true},
             "grandTotal": {"dataType":"double","required":true},
+            "paidAmount": {"dataType":"double","required":true},
+            "dueAmount": {"dataType":"double","required":true},
+            "paymentStatus": {"ref":"PurchasePaymentStatus","required":true},
+            "paymentMode": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
             "createdAt": {"dataType":"datetime","required":true},
             "updatedAt": {"dataType":"datetime","required":true},
             "items": {"dataType":"array","array":{"dataType":"refObject","ref":"PurchaseItem"},"required":true},
@@ -782,7 +902,9 @@ const models: TsoaRoute.Models = {
             "remark": {"dataType":"string"},
             "status": {"ref":"PurchaseStatus"},
             "otherCharges": {"dataType":"double"},
-            "items": {"dataType":"array","array":{"dataType":"nestedObjectLiteral","nestedProperties":{"gstPercent":{"dataType":"double"},"saleRate":{"dataType":"double","required":true},"mrp":{"dataType":"double","required":true},"purchaseRate":{"dataType":"double","required":true},"quantity":{"dataType":"double","required":true},"barcode":{"dataType":"string"},"productName":{"dataType":"string","required":true},"productId":{"dataType":"string","required":true}}},"required":true},
+            "paidAmount": {"dataType":"double"},
+            "paymentMode": {"dataType":"string"},
+            "items": {"dataType":"array","array":{"dataType":"nestedObjectLiteral","nestedProperties":{"isNewProduct":{"dataType":"boolean"},"gstPercent":{"dataType":"double"},"saleRate":{"dataType":"double","required":true},"mrp":{"dataType":"double","required":true},"purchaseRate":{"dataType":"double","required":true},"quantity":{"dataType":"double","required":true},"hsnCode":{"dataType":"string"},"category":{"dataType":"string"},"brand":{"dataType":"string"},"sku":{"dataType":"string"},"barcode":{"dataType":"string"},"productName":{"dataType":"string","required":true},"productId":{"dataType":"string"}}},"required":true},
         },
         "additionalProperties": false,
     },
@@ -868,6 +990,36 @@ const models: TsoaRoute.Models = {
         "additionalProperties": false,
     },
     // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "AccountEntryType": {
+        "dataType": "refEnum",
+        "enums": ["PAYMENT","RECEIPT","JOURNAL","CONTRA","BILL"],
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "PartyType": {
+        "dataType": "refEnum",
+        "enums": ["SUPPLIER","CUSTOMER","EMPLOYEE"],
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "AccountEntry": {
+        "dataType": "refObject",
+        "properties": {
+            "id": {"dataType":"string","required":true},
+            "tenantId": {"dataType":"string","required":true},
+            "entryType": {"ref":"AccountEntryType","required":true},
+            "accountHeadId": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "partyType": {"dataType":"union","subSchemas":[{"ref":"PartyType"},{"dataType":"enum","enums":[null]}],"required":true},
+            "partyId": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "partyName": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "entryDate": {"dataType":"string","required":true},
+            "amount": {"dataType":"double","required":true},
+            "paymentMode": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "narration": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "referenceNo": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "createdAt": {"dataType":"datetime","required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
     "HealthCheckDto": {
         "dataType": "refObject",
         "properties": {
@@ -876,6 +1028,55 @@ const models: TsoaRoute.Models = {
             "redis": {"dataType":"boolean","required":true},
             "uptimeSeconds": {"dataType":"double","required":true},
             "version": {"dataType":"string","required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "ExpenseCategory": {
+        "dataType": "refEnum",
+        "enums": ["RENT","SALARY","UTILITIES","TRANSPORT","MAINTENANCE","PACKAGING","MISC"],
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "Expense": {
+        "dataType": "refObject",
+        "properties": {
+            "id": {"dataType":"string","required":true},
+            "tenantId": {"dataType":"string","required":true},
+            "facilityId": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "expenseDate": {"dataType":"string","required":true},
+            "amount": {"dataType":"double","required":true},
+            "purpose": {"dataType":"string","required":true},
+            "category": {"ref":"ExpenseCategory","required":true},
+            "paymentMode": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "payee": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "notes": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "isRecurringGenerated": {"dataType":"boolean","required":true},
+            "scheduleId": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "periodKey": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "createdBy": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "createdAt": {"dataType":"datetime","required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "ExpenseSchedule": {
+        "dataType": "refObject",
+        "properties": {
+            "id": {"dataType":"string","required":true},
+            "tenantId": {"dataType":"string","required":true},
+            "facilityId": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "purpose": {"dataType":"string","required":true},
+            "category": {"ref":"ExpenseCategory","required":true},
+            "amount": {"dataType":"double","required":true},
+            "dayOfMonth": {"dataType":"double","required":true},
+            "paymentMode": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "payee": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "notes": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "isActive": {"dataType":"boolean","required":true},
+            "startMonth": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "endMonth": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
+            "createdAt": {"dataType":"datetime","required":true},
+            "updatedAt": {"dataType":"datetime","required":true},
         },
         "additionalProperties": false,
     },
@@ -1103,6 +1304,56 @@ const models: TsoaRoute.Models = {
         "additionalProperties": false,
     },
     // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "HistoricalSalesImportResult": {
+        "dataType": "refObject",
+        "properties": {
+            "importedInvoices": {"dataType":"double","required":true},
+            "importedLines": {"dataType":"double","required":true},
+            "skippedExisting": {"dataType":"double","required":true},
+            "replaced": {"dataType":"double","required":true},
+            "stubsCreated": {"dataType":"double","required":true},
+            "matchedBarcode": {"dataType":"double","required":true},
+            "matchedName": {"dataType":"double","required":true},
+            "netTotal": {"dataType":"double","required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "HistoricalSaleLine": {
+        "dataType": "refObject",
+        "properties": {
+            "externalLineId": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"double"},{"dataType":"enum","enums":[null]}]},
+            "itemName": {"dataType":"string","required":true},
+            "barcode": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}]},
+            "quantity": {"dataType":"double","required":true},
+            "unitPrice": {"dataType":"double","required":true},
+            "mrp": {"dataType":"double"},
+            "netAmount": {"dataType":"double"},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "HistoricalSaleInvoice": {
+        "dataType": "refObject",
+        "properties": {
+            "invoiceNumber": {"dataType":"string","required":true},
+            "billDate": {"dataType":"string","required":true},
+            "customerName": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}]},
+            "customerMobile": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}]},
+            "lines": {"dataType":"array","array":{"dataType":"refObject","ref":"HistoricalSaleLine"},"required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+    "ImportHistoricalSalesBody": {
+        "dataType": "refObject",
+        "properties": {
+            "replaceExisting": {"dataType":"boolean"},
+            "invoices": {"dataType":"array","array":{"dataType":"refObject","ref":"HistoricalSaleInvoice"},"required":true},
+        },
+        "additionalProperties": false,
+    },
+    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
     "AccountHead": {
         "dataType": "refObject",
         "properties": {
@@ -1119,38 +1370,8 @@ const models: TsoaRoute.Models = {
         "additionalProperties": false,
     },
     // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
-    "AccountEntryType": {
-        "dataType": "refEnum",
-        "enums": ["PAYMENT","RECEIPT","JOURNAL","CONTRA","BILL"],
-    },
-    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
-    "PartyType": {
-        "dataType": "refEnum",
-        "enums": ["SUPPLIER","CUSTOMER","EMPLOYEE"],
-    },
-    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
-    "AccountEntry": {
-        "dataType": "refObject",
-        "properties": {
-            "id": {"dataType":"string","required":true},
-            "tenantId": {"dataType":"string","required":true},
-            "entryType": {"ref":"AccountEntryType","required":true},
-            "accountHeadId": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
-            "partyType": {"dataType":"union","subSchemas":[{"ref":"PartyType"},{"dataType":"enum","enums":[null]}],"required":true},
-            "partyId": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
-            "partyName": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
-            "entryDate": {"dataType":"string","required":true},
-            "amount": {"dataType":"double","required":true},
-            "paymentMode": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
-            "narration": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
-            "referenceNo": {"dataType":"union","subSchemas":[{"dataType":"string"},{"dataType":"enum","enums":[null]}],"required":true},
-            "createdAt": {"dataType":"datetime","required":true},
-        },
-        "additionalProperties": false,
-    },
-    // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
 };
-const templateService = new ExpressTemplateService(models, {"noImplicitAdditionalProperties":"throw-on-extras","bodyCoercion":true});
+const templateService = new ExpressTemplateService(models, {"noImplicitAdditionalProperties":"silently-remove-extras","bodyCoercion":true});
 
 // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
 
@@ -1280,6 +1501,198 @@ export function RegisterRoutes(app: Router) {
 
               await templateService.apiHandler({
                 methodName: 'movements',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: undefined,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsStockController_listStocktakes: Record<string, TsoaRoute.ParameterSchema> = {
+                tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+                facilityId: {"in":"query","name":"facilityId","dataType":"string"},
+        };
+        app.get('/api/v1/stock/stocktakes',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(StockController)),
+            ...(fetchMiddlewares<RequestHandler>(StockController.prototype.listStocktakes)),
+
+            async function StockController_listStocktakes(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsStockController_listStocktakes, request, response });
+
+                const controller = new StockController();
+
+              await templateService.apiHandler({
+                methodName: 'listStocktakes',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: undefined,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsStockController_getStocktake: Record<string, TsoaRoute.ParameterSchema> = {
+                tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+                sessionId: {"in":"path","name":"sessionId","required":true,"dataType":"string"},
+        };
+        app.get('/api/v1/stock/stocktakes/:sessionId',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(StockController)),
+            ...(fetchMiddlewares<RequestHandler>(StockController.prototype.getStocktake)),
+
+            async function StockController_getStocktake(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsStockController_getStocktake, request, response });
+
+                const controller = new StockController();
+
+              await templateService.apiHandler({
+                methodName: 'getStocktake',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: undefined,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsStockController_startStocktake: Record<string, TsoaRoute.ParameterSchema> = {
+                tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+                body: {"in":"body","name":"body","required":true,"dataType":"nestedObjectLiteral","nestedProperties":{"remark":{"dataType":"string"},"startedBy":{"dataType":"string","required":true},"facilityId":{"dataType":"string","required":true}}},
+        };
+        app.post('/api/v1/stock/stocktakes',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(StockController)),
+            ...(fetchMiddlewares<RequestHandler>(StockController.prototype.startStocktake)),
+
+            async function StockController_startStocktake(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsStockController_startStocktake, request, response });
+
+                const controller = new StockController();
+
+              await templateService.apiHandler({
+                methodName: 'startStocktake',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: 201,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsStockController_updateStocktakeCount: Record<string, TsoaRoute.ParameterSchema> = {
+                tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+                body: {"in":"body","name":"body","required":true,"dataType":"nestedObjectLiteral","nestedProperties":{"remark":{"dataType":"string"},"countedQty":{"dataType":"double","required":true},"lotId":{"dataType":"string","required":true},"sessionId":{"dataType":"string","required":true}}},
+        };
+        app.post('/api/v1/stock/stocktakes/count',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(StockController)),
+            ...(fetchMiddlewares<RequestHandler>(StockController.prototype.updateStocktakeCount)),
+
+            async function StockController_updateStocktakeCount(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsStockController_updateStocktakeCount, request, response });
+
+                const controller = new StockController();
+
+              await templateService.apiHandler({
+                methodName: 'updateStocktakeCount',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: undefined,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsStockController_commitStocktake: Record<string, TsoaRoute.ParameterSchema> = {
+                tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+                sessionId: {"in":"path","name":"sessionId","required":true,"dataType":"string"},
+        };
+        app.post('/api/v1/stock/stocktakes/:sessionId/commit',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(StockController)),
+            ...(fetchMiddlewares<RequestHandler>(StockController.prototype.commitStocktake)),
+
+            async function StockController_commitStocktake(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsStockController_commitStocktake, request, response });
+
+                const controller = new StockController();
+
+              await templateService.apiHandler({
+                methodName: 'commitStocktake',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: undefined,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsStockController_cancelStocktake: Record<string, TsoaRoute.ParameterSchema> = {
+                tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+                sessionId: {"in":"path","name":"sessionId","required":true,"dataType":"string"},
+        };
+        app.post('/api/v1/stock/stocktakes/:sessionId/cancel',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(StockController)),
+            ...(fetchMiddlewares<RequestHandler>(StockController.prototype.cancelStocktake)),
+
+            async function StockController_cancelStocktake(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsStockController_cancelStocktake, request, response });
+
+                const controller = new StockController();
+
+              await templateService.apiHandler({
+                methodName: 'cancelStocktake',
                 controller,
                 response,
                 next,
@@ -1546,6 +1959,7 @@ export function RegisterRoutes(app: Router) {
         // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
         const argsSalesController_list: Record<string, TsoaRoute.ParameterSchema> = {
                 tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+                limit: {"in":"query","name":"limit","dataType":"double"},
         };
         app.get('/api/v1/sales',
             authenticateMiddleware([{"tenantHeader":[]}]),
@@ -1827,6 +2241,71 @@ export function RegisterRoutes(app: Router) {
             }
         });
         // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsPartyController_paySupplier: Record<string, TsoaRoute.ParameterSchema> = {
+                tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+                supplierId: {"in":"path","name":"supplierId","required":true,"dataType":"string"},
+                body: {"in":"body","name":"body","required":true,"dataType":"nestedObjectLiteral","nestedProperties":{"referenceNo":{"dataType":"string"},"remark":{"dataType":"string"},"entryDate":{"dataType":"string","required":true},"paymentMode":{"dataType":"string","required":true},"amount":{"dataType":"double","required":true}}},
+        };
+        app.post('/api/v1/parties/suppliers/:supplierId/payments',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(PartyController)),
+            ...(fetchMiddlewares<RequestHandler>(PartyController.prototype.paySupplier)),
+
+            async function PartyController_paySupplier(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsPartyController_paySupplier, request, response });
+
+                const controller = new PartyController();
+
+              await templateService.apiHandler({
+                methodName: 'paySupplier',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: 201,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsPartyController_supplierLedger: Record<string, TsoaRoute.ParameterSchema> = {
+                tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+                supplierId: {"in":"path","name":"supplierId","required":true,"dataType":"string"},
+        };
+        app.get('/api/v1/parties/suppliers/:supplierId/ledger',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(PartyController)),
+            ...(fetchMiddlewares<RequestHandler>(PartyController.prototype.supplierLedger)),
+
+            async function PartyController_supplierLedger(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsPartyController_supplierLedger, request, response });
+
+                const controller = new PartyController();
+
+              await templateService.apiHandler({
+                methodName: 'supplierLedger',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: undefined,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
         const argsHealthController_getHealth: Record<string, TsoaRoute.ParameterSchema> = {
         };
         app.get('/api/v1/health',
@@ -1850,6 +2329,199 @@ export function RegisterRoutes(app: Router) {
                 next,
                 validatedArgs,
                 successStatus: 200,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsExpenseController_list: Record<string, TsoaRoute.ParameterSchema> = {
+                tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+                from: {"in":"query","name":"from","dataType":"string"},
+                to: {"in":"query","name":"to","dataType":"string"},
+        };
+        app.get('/api/v1/expenses',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(ExpenseController)),
+            ...(fetchMiddlewares<RequestHandler>(ExpenseController.prototype.list)),
+
+            async function ExpenseController_list(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsExpenseController_list, request, response });
+
+                const controller = new ExpenseController();
+
+              await templateService.apiHandler({
+                methodName: 'list',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: undefined,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsExpenseController_create: Record<string, TsoaRoute.ParameterSchema> = {
+                tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+                body: {"in":"body","name":"body","required":true,"dataType":"nestedObjectLiteral","nestedProperties":{"createdBy":{"dataType":"string"},"notes":{"dataType":"string"},"payee":{"dataType":"string"},"paymentMode":{"dataType":"string"},"category":{"ref":"ExpenseCategory"},"purpose":{"dataType":"string","required":true},"amount":{"dataType":"double","required":true},"expenseDate":{"dataType":"string","required":true},"facilityId":{"dataType":"string"}}},
+        };
+        app.post('/api/v1/expenses',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(ExpenseController)),
+            ...(fetchMiddlewares<RequestHandler>(ExpenseController.prototype.create)),
+
+            async function ExpenseController_create(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsExpenseController_create, request, response });
+
+                const controller = new ExpenseController();
+
+              await templateService.apiHandler({
+                methodName: 'create',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: 201,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsExpenseController_listSchedules: Record<string, TsoaRoute.ParameterSchema> = {
+                tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+        };
+        app.get('/api/v1/expenses/schedules',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(ExpenseController)),
+            ...(fetchMiddlewares<RequestHandler>(ExpenseController.prototype.listSchedules)),
+
+            async function ExpenseController_listSchedules(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsExpenseController_listSchedules, request, response });
+
+                const controller = new ExpenseController();
+
+              await templateService.apiHandler({
+                methodName: 'listSchedules',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: undefined,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsExpenseController_upsertSchedule: Record<string, TsoaRoute.ParameterSchema> = {
+                tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+                body: {"in":"body","name":"body","required":true,"dataType":"nestedObjectLiteral","nestedProperties":{"endMonth":{"dataType":"string"},"startMonth":{"dataType":"string"},"isActive":{"dataType":"boolean"},"facilityId":{"dataType":"string"},"notes":{"dataType":"string"},"payee":{"dataType":"string"},"paymentMode":{"dataType":"string"},"category":{"ref":"ExpenseCategory"},"dayOfMonth":{"dataType":"double","required":true},"amount":{"dataType":"double","required":true},"purpose":{"dataType":"string","required":true},"id":{"dataType":"string"}}},
+        };
+        app.post('/api/v1/expenses/schedules',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(ExpenseController)),
+            ...(fetchMiddlewares<RequestHandler>(ExpenseController.prototype.upsertSchedule)),
+
+            async function ExpenseController_upsertSchedule(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsExpenseController_upsertSchedule, request, response });
+
+                const controller = new ExpenseController();
+
+              await templateService.apiHandler({
+                methodName: 'upsertSchedule',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: 201,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsExpenseController_runSchedules: Record<string, TsoaRoute.ParameterSchema> = {
+                tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+                asOf: {"in":"query","name":"asOf","dataType":"string"},
+        };
+        app.post('/api/v1/expenses/run-schedules',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(ExpenseController)),
+            ...(fetchMiddlewares<RequestHandler>(ExpenseController.prototype.runSchedules)),
+
+            async function ExpenseController_runSchedules(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsExpenseController_runSchedules, request, response });
+
+                const controller = new ExpenseController();
+
+              await templateService.apiHandler({
+                methodName: 'runSchedules',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: undefined,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsExpenseController_profitLoss: Record<string, TsoaRoute.ParameterSchema> = {
+                tenantId: {"in":"query","name":"tenantId","required":true,"dataType":"string"},
+                from: {"in":"query","name":"from","required":true,"dataType":"string"},
+                to: {"in":"query","name":"to","required":true,"dataType":"string"},
+        };
+        app.get('/api/v1/expenses/profit-loss',
+            authenticateMiddleware([{"tenantHeader":[]}]),
+            ...(fetchMiddlewares<RequestHandler>(ExpenseController)),
+            ...(fetchMiddlewares<RequestHandler>(ExpenseController.prototype.profitLoss)),
+
+            async function ExpenseController_profitLoss(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsExpenseController_profitLoss, request, response });
+
+                const controller = new ExpenseController();
+
+              await templateService.apiHandler({
+                methodName: 'profitLoss',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: undefined,
               });
             } catch (err) {
                 return next(err);
@@ -2409,6 +3081,67 @@ export function RegisterRoutes(app: Router) {
 
               await templateService.apiHandler({
                 methodName: 'importStats',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: undefined,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsAdminImportController_importHistoricalSales: Record<string, TsoaRoute.ParameterSchema> = {
+                body: {"in":"body","name":"body","required":true,"ref":"ImportHistoricalSalesBody"},
+                importSecret: {"in":"header","name":"x-import-secret","dataType":"string"},
+        };
+        app.post('/api/v1/admin/import-historical-sales',
+            ...(fetchMiddlewares<RequestHandler>(AdminImportController)),
+            ...(fetchMiddlewares<RequestHandler>(AdminImportController.prototype.importHistoricalSales)),
+
+            async function AdminImportController_importHistoricalSales(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsAdminImportController_importHistoricalSales, request, response });
+
+                const controller = new AdminImportController();
+
+              await templateService.apiHandler({
+                methodName: 'importHistoricalSales',
+                controller,
+                response,
+                next,
+                validatedArgs,
+                successStatus: 200,
+              });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+        const argsAdminImportController_salesImportStats: Record<string, TsoaRoute.ParameterSchema> = {
+                importSecret: {"in":"header","name":"x-import-secret","dataType":"string"},
+        };
+        app.get('/api/v1/admin/sales-import-stats',
+            ...(fetchMiddlewares<RequestHandler>(AdminImportController)),
+            ...(fetchMiddlewares<RequestHandler>(AdminImportController.prototype.salesImportStats)),
+
+            async function AdminImportController_salesImportStats(request: ExRequest, response: ExResponse, next: any) {
+
+            // WARNING: This file was auto-generated with tsoa. Please do not modify it. Re-run tsoa to re-generate this file: https://github.com/lukeautry/tsoa
+
+            let validatedArgs: any[] = [];
+            try {
+                validatedArgs = templateService.getValidatedArgs({ args: argsAdminImportController_salesImportStats, request, response });
+
+                const controller = new AdminImportController();
+
+              await templateService.apiHandler({
+                methodName: 'salesImportStats',
                 controller,
                 response,
                 next,

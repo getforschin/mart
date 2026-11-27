@@ -5,6 +5,7 @@ import {
   InventoryRow,
   LocalAttendanceRecord,
   LocalOrderInvoice,
+  LocalStocktakeSession,
   LoginRequest,
   PosApi,
   PosConfig,
@@ -67,6 +68,57 @@ const posApi: PosApi = {
   createPurchase: (input) => ipcRenderer.invoke('pos:createPurchase', input),
   dumpStock: (input) => ipcRenderer.invoke('pos:dumpStock', input),
   correctStock: (input) => ipcRenderer.invoke('pos:correctStock', input),
+  paySupplier: (input: {
+    supplierId: string;
+    amount: number;
+    paymentMode: string;
+    entryDate: string;
+    remark?: string;
+  }) => ipcRenderer.invoke('pos:paySupplier', input),
+  createExpense: (input: {
+    expenseDate: string;
+    amount: number;
+    purpose: string;
+    category?: string;
+    paymentMode?: string;
+    payee?: string;
+    notes?: string;
+  }) => ipcRenderer.invoke('pos:createExpense', input),
+  listExpenses: (from?: string, to?: string) => ipcRenderer.invoke('pos:listExpenses', from, to),
+  listExpenseSchedules: () => ipcRenderer.invoke('pos:listExpenseSchedules'),
+  upsertExpenseSchedule: (input: {
+    id?: string;
+    purpose: string;
+    amount: number;
+    dayOfMonth: number;
+    category?: string;
+    paymentMode?: string;
+    payee?: string;
+    notes?: string;
+    isActive?: boolean;
+  }) => ipcRenderer.invoke('pos:upsertExpenseSchedule', input),
+  runExpenseSchedules: (asOf?: string) => ipcRenderer.invoke('pos:runExpenseSchedules', asOf),
+  getProfitLoss: (from: string, to: string) => ipcRenderer.invoke('pos:getProfitLoss', from, to),
+  startStocktake: (remark?: string): Promise<LocalStocktakeSession> =>
+    ipcRenderer.invoke('pos:startStocktake', remark),
+  listStocktakeSessions: (): Promise<LocalStocktakeSession[]> =>
+    ipcRenderer.invoke('pos:listStocktakeSessions'),
+  getStocktakeSession: (sessionId: string): Promise<LocalStocktakeSession> =>
+    ipcRenderer.invoke('pos:getStocktakeSession', sessionId),
+  updateStocktakeCount: (input: {
+    sessionId: string;
+    lotId: string;
+    countedQty: number;
+    remark?: string;
+  }): Promise<LocalStocktakeSession> => ipcRenderer.invoke('pos:updateStocktakeCount', input),
+  commitStocktake: (sessionId: string): Promise<LocalStocktakeSession> =>
+    ipcRenderer.invoke('pos:commitStocktake', sessionId),
+  cancelStocktake: (sessionId: string): Promise<LocalStocktakeSession> =>
+    ipcRenderer.invoke('pos:cancelStocktake', sessionId),
+  getDashboardSnapshot: (): Promise<Record<string, unknown>> =>
+    ipcRenderer.invoke('pos:getDashboardSnapshot'),
+  printReceipt: (invoiceId: string): Promise<{ printed: boolean }> =>
+    ipcRenderer.invoke('pos:printReceipt', invoiceId),
   checkConnectivity: (): Promise<boolean> => ipcRenderer.invoke('pos:checkConnectivity'),
   requestManualSync: (): Promise<{ started: boolean; reason?: string }> =>
     ipcRenderer.invoke('pos:requestManualSync'),

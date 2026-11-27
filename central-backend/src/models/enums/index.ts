@@ -40,6 +40,8 @@ export enum SyncEventType {
   CUSTOMER = 'CUSTOMER',
   PURCHASE = 'PURCHASE',
   STOCK_EVENT = 'STOCK_EVENT',
+  SUPPLIER_PAYMENT = 'SUPPLIER_PAYMENT',
+  EXPENSE = 'EXPENSE',
 }
 
 export enum SyncResultStatus {
@@ -53,6 +55,22 @@ export enum PurchaseStatus {
   COMPLETED = 'COMPLETED',
   RETURNED = 'RETURNED',
   CANCELLED = 'CANCELLED',
+}
+
+export enum PurchasePaymentStatus {
+  UNPAID = 'UNPAID',
+  PARTIAL = 'PARTIAL',
+  PAID = 'PAID',
+}
+
+export enum ExpenseCategory {
+  RENT = 'RENT',
+  SALARY = 'SALARY',
+  UTILITIES = 'UTILITIES',
+  TRANSPORT = 'TRANSPORT',
+  MAINTENANCE = 'MAINTENANCE',
+  PACKAGING = 'PACKAGING',
+  MISC = 'MISC',
 }
 
 export enum GstMode {
@@ -77,6 +95,12 @@ export enum TransferStatus {
   PENDING = 'PENDING',
   IN_TRANSIT = 'IN_TRANSIT',
   RECEIVED = 'RECEIVED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum StocktakeStatus {
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMMITTED = 'COMMITTED',
   CANCELLED = 'CANCELLED',
 }
 

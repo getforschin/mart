@@ -26,6 +26,10 @@
     "import:stock": "python3 scripts/import-stock-sheet.py",
     "import:stock:railway": "python3 scripts/import-stock-sheet.py --railway",
     "import:stock:railway-api": "python3 scripts/push-stock-to-railway.py",
+    "import:sales": "python3 scripts/import-sales-report.py",
+    "import:sales:railway": "python3 scripts/import-sales-report.py --railway",
+    "import:sales:railway-api": "python3 scripts/push-sales-to-railway.py",
+    "sync:pos-pending": "python3 scripts/sync-pos-pending-to-api.py",
     "backend:start": "npm run start --prefix central-backend",
     "backend:dev": "npm run dev --prefix central-backend",
     "admin:dev": "npm run dev --prefix web-apps/admin-portal",
@@ -39,6 +43,7 @@
     "prod:up": "docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build",
     "prod:down": "docker compose -f docker-compose.prod.yml --env-file .env.production down",
     "prod:logs": "docker compose -f docker-compose.prod.yml --env-file .env.production logs -f",
-    "prod:ps": "docker compose -f docker-compose.prod.yml --env-file .env.production ps"
+    "prod:ps": "docker compose -f docker-compose.prod.yml --env-file .env.production ps",
+    "test": "npm run test --prefix central-backend && npm run test --prefix desktop-app"
   }
 }

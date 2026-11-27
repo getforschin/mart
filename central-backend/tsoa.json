@@ -1,6 +1,6 @@
 {
   "entryFile": "src/server.ts",
-  "noImplicitAdditionalProperties": "throw-on-extras",
+  "noImplicitAdditionalProperties": "silently-remove-extras",
   "controllerPathGlobs": ["src/controllers/**/*Controller.ts"],
   "spec": {
     "outputDirectory": "dist/swagger",

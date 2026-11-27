@@ -143,11 +143,15 @@ export interface CreateInvoicePayload {
   customer: PosCustomer | null;
   customerMobile: string;
   employeeName: string;
-  couponCode: string;
-  redeemAmount: number;
+  /** @deprecated coupons removed from POS — kept for draft compatibility */
+  couponCode?: string;
+  /** @deprecated redeem removed from POS */
+  redeemAmount?: number;
   billDiscountPercent: number;
   billDiscountAmount: number;
   roundOff: number;
+  amountTendered?: number;
+  returnOfInvoiceId?: string | null;
   status: InvoiceStatus;
 }
 
@@ -173,9 +177,41 @@ export interface LocalOrderInvoice {
   paymentChannel: PaymentChannel;
   originSource: OrderOriginSource;
   couponCode: string | null;
+  billDiscountPercent: number;
+  amountTendered: number;
+  changeDue: number;
+  returnOfInvoiceId: string | null;
   isSynced: number;
   createdAt: string;
   items: CartLineItem[];
+}
+
+export type StocktakeStatus = 'IN_PROGRESS' | 'COMMITTED' | 'CANCELLED';
+
+export interface LocalStocktakeLine {
+  id: string;
+  sessionId: string;
+  productId: string;
+  lotId: string;
+  productName?: string;
+  batchNumber?: string;
+  expectedQty: number;
+  countedQty: number | null;
+  remark: string | null;
+}
+
+export interface LocalStocktakeSession {
+  id: string;
+  tenantId: string;
+  facilityId: string;
+  startedBy: string;
+  status: StocktakeStatus;
+  remark: string | null;
+  committedAt: string | null;
+  isSynced: number;
+  createdAt: string;
+  updatedAt: string;
+  lines: LocalStocktakeLine[];
 }
 
 export interface LocalAttendanceRecord {
@@ -275,29 +311,47 @@ export interface PosApi {
   getSyncMeta: () => Promise<{ lastApiContactAt: string | null; lastSyncAt: string | null }>;
   listAllCustomers: (query?: string) => Promise<PosCustomer[]>;
   listSuppliers: () => Promise<
-    Array<{ id: string; name: string; mobile: string | null; email: string | null; gstin: string | null }>
+    Array<{
+      id: string;
+      name: string;
+      mobile: string | null;
+      email: string | null;
+      gstin: string | null;
+      outstandingDue: number;
+    }>
   >;
   upsertSupplier: (input: {
     name: string;
     mobile?: string;
     email?: string;
     gstin?: string;
-  }) => Promise<{ id: string; name: string; mobile: string | null; email: string | null; gstin: string | null }>;
+  }) => Promise<{
+    id: string;
+    name: string;
+    mobile: string | null;
+    email: string | null;
+    gstin: string | null;
+    outstandingDue: number;
+  }>;
   listPurchases: () => Promise<Array<Record<string, unknown>>>;
   createPurchase: (input: {
     supplierId: string;
     invoiceNumber?: string;
     invoiceDate: string;
     remark?: string;
+    paidAmount?: number;
+    paymentMode?: string;
     items: Array<{
-      productId: string;
+      productId?: string;
       productName: string;
       barcode?: string;
+      sku?: string;
       quantity: number;
       purchaseRate: number;
       mrp: number;
       saleRate: number;
       gstPercent?: number;
+      isNewProduct?: boolean;
     }>;
   }) => Promise<Record<string, unknown>>;
   dumpStock: (input: {
@@ -312,6 +366,50 @@ export interface PosApi {
     newQuantity: number;
     remark?: string;
   }) => Promise<void>;
+  paySupplier: (input: {
+    supplierId: string;
+    amount: number;
+    paymentMode: string;
+    entryDate: string;
+    remark?: string;
+  }) => Promise<{ outstandingDue: number; paymentId: string }>;
+  createExpense: (input: {
+    expenseDate: string;
+    amount: number;
+    purpose: string;
+    category?: string;
+    paymentMode?: string;
+    payee?: string;
+    notes?: string;
+  }) => Promise<Record<string, unknown>>;
+  listExpenses: (from?: string, to?: string) => Promise<Array<Record<string, unknown>>>;
+  listExpenseSchedules: () => Promise<Array<Record<string, unknown>>>;
+  upsertExpenseSchedule: (input: {
+    id?: string;
+    purpose: string;
+    amount: number;
+    dayOfMonth: number;
+    category?: string;
+    paymentMode?: string;
+    payee?: string;
+    notes?: string;
+    isActive?: boolean;
+  }) => Promise<Record<string, unknown>>;
+  runExpenseSchedules: (asOf?: string) => Promise<{ posted: number }>;
+  getProfitLoss: (from: string, to: string) => Promise<Record<string, unknown>>;
+  startStocktake: (remark?: string) => Promise<LocalStocktakeSession>;
+  listStocktakeSessions: () => Promise<LocalStocktakeSession[]>;
+  getStocktakeSession: (sessionId: string) => Promise<LocalStocktakeSession>;
+  updateStocktakeCount: (input: {
+    sessionId: string;
+    lotId: string;
+    countedQty: number;
+    remark?: string;
+  }) => Promise<LocalStocktakeSession>;
+  commitStocktake: (sessionId: string) => Promise<LocalStocktakeSession>;
+  cancelStocktake: (sessionId: string) => Promise<LocalStocktakeSession>;
+  getDashboardSnapshot: () => Promise<Record<string, unknown>>;
+  printReceipt: (invoiceId: string) => Promise<{ printed: boolean }>;
   onSyncStatus: (callback: (event: SyncStatusEvent) => void) => () => void;
   /** Optional health probe — do not call on billing hot path */
   checkConnectivity: () => Promise<boolean>;

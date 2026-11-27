@@ -58,19 +58,7 @@ export function createOfflinePort(): DataPort {
     },
 
     async getDashboard() {
-      const [inventory, customers, sales, summary] = await Promise.all([
-        api().listInventory('', { inStockOnly: false }),
-        api().listAllCustomers(),
-        api().listInvoices(500),
-        api().getSalesReportSummary(),
-      ]);
-      return {
-        totalProducts: new Set(inventory.map((i) => i.productId)).size,
-        totalCustomers: customers.length,
-        totalSales: summary.salesTotal,
-        lowStockCount: inventory.filter((i) => i.quantityOnHand > 0 && i.quantityOnHand < 5).length,
-        invoiceCount: sales.length,
-      };
+      return api().getDashboardSnapshot();
     },
 
     async getExpiry() {
@@ -121,6 +109,77 @@ export function createOfflinePort(): DataPort {
       return api().upsertSupplier(input);
     },
 
+    async paySupplier(input) {
+      return api().paySupplier(input);
+    },
+
+    async createExpense(input) {
+      const row = await api().createExpense(input);
+      return {
+        id: String(row.id),
+        expenseDate: String(row.expenseDate ?? input.expenseDate),
+        amount: Number(row.amount ?? input.amount),
+        purpose: String(row.purpose ?? input.purpose),
+        category: String(row.category ?? input.category ?? 'MISC'),
+        paymentMode: (row.paymentMode as string | null) ?? input.paymentMode ?? null,
+        payee: (row.payee as string | null) ?? input.payee ?? null,
+        notes: (row.notes as string | null) ?? input.notes ?? null,
+      };
+    },
+
+    async listExpenses(from, to) {
+      const rows = await api().listExpenses(from, to);
+      return rows.map((r) => ({
+        id: String(r.id),
+        expenseDate: String(r.expense_date ?? r.expenseDate),
+        amount: Number(r.amount),
+        purpose: String(r.purpose),
+        category: String(r.category ?? 'MISC'),
+        paymentMode: r.payment_mode ? String(r.payment_mode) : (r.paymentMode as string | null) ?? null,
+        payee: r.payee ? String(r.payee) : null,
+        notes: r.notes ? String(r.notes) : null,
+        isRecurringGenerated: Boolean(r.is_recurring_generated ?? r.isRecurringGenerated),
+      }));
+    },
+
+    async listExpenseSchedules() {
+      const rows = await api().listExpenseSchedules();
+      return rows.map((r) => ({
+        id: String(r.id),
+        purpose: String(r.purpose),
+        category: String(r.category ?? 'MISC'),
+        amount: Number(r.amount),
+        dayOfMonth: Number(r.day_of_month ?? r.dayOfMonth),
+        paymentMode: r.payment_mode ? String(r.payment_mode) : null,
+        payee: r.payee ? String(r.payee) : null,
+        notes: r.notes ? String(r.notes) : null,
+        isActive: Number(r.is_active ?? r.isActive ?? 1) === 1,
+      }));
+    },
+
+    async upsertExpenseSchedule(input) {
+      const row = await api().upsertExpenseSchedule(input);
+      return {
+        id: String(row.id),
+        purpose: String(row.purpose ?? input.purpose),
+        category: String(row.category ?? input.category ?? 'MISC'),
+        amount: Number(row.amount ?? input.amount),
+        dayOfMonth: Number(row.dayOfMonth ?? row.day_of_month ?? input.dayOfMonth),
+        paymentMode: (row.paymentMode as string | null) ?? input.paymentMode ?? null,
+        payee: (row.payee as string | null) ?? input.payee ?? null,
+        notes: (row.notes as string | null) ?? input.notes ?? null,
+        isActive: input.isActive !== false,
+      };
+    },
+
+    async runExpenseSchedules(asOf) {
+      return api().runExpenseSchedules(asOf);
+    },
+
+    async getProfitLoss(from, to) {
+      return api().getProfitLoss(from, to);
+    },
+
     async listProducts(query) {
       const rows = await api().listInventory(query ?? '', { inStockOnly: false });
       const byProduct = new Map<string, (typeof rows)[number]>();
@@ -168,6 +227,25 @@ export function createOfflinePort(): DataPort {
       await api().correctStock(input);
     },
 
+    async startStocktake(remark) {
+      return api().startStocktake(remark);
+    },
+    async listStocktakes() {
+      return api().listStocktakeSessions();
+    },
+    async getStocktake(sessionId) {
+      return api().getStocktakeSession(sessionId);
+    },
+    async updateStocktakeCount(input) {
+      return api().updateStocktakeCount(input);
+    },
+    async commitStocktake(sessionId) {
+      return api().commitStocktake(sessionId);
+    },
+    async cancelStocktake(sessionId) {
+      return api().cancelStocktake(sessionId);
+    },
+
     async listPurchases() {
       const rows = await api().listPurchases();
       return rows.map((r) => ({
@@ -177,6 +255,9 @@ export function createOfflinePort(): DataPort {
         invoiceNumber: (r.invoice_number as string | null) ?? (r.invoiceNumber as string | null) ?? null,
         invoiceDate: String(r.invoice_date ?? r.invoiceDate ?? ''),
         grandTotal: Number(r.grand_total ?? r.grandTotal ?? 0),
+        paidAmount: Number(r.paid_amount ?? r.paidAmount ?? 0),
+        dueAmount: Number(r.due_amount ?? r.dueAmount ?? 0),
+        paymentStatus: String(r.payment_status ?? r.paymentStatus ?? ''),
         status: String(r.status ?? 'COMPLETED'),
         isSynced: Number(r.is_synced ?? r.isSynced ?? 0),
       }));
@@ -191,12 +272,31 @@ export function createOfflinePort(): DataPort {
         invoiceNumber: (row.invoiceNumber as string | null) ?? null,
         invoiceDate: String(row.invoiceDate ?? input.invoiceDate),
         grandTotal: Number(row.grandTotal ?? 0),
+        paidAmount: Number(row.paidAmount ?? input.paidAmount ?? 0),
+        dueAmount: Number(row.dueAmount ?? 0),
+        paymentStatus: String(row.paymentStatus ?? ''),
         status: String(row.status ?? 'COMPLETED'),
         isSynced: Number(row.isSynced ?? 0),
       };
     },
 
-    async listSales(limit = 100) {
+    async getReports() {
+      const monthStart = new Date().toISOString().slice(0, 8) + '01';
+      const today = new Date().toISOString().slice(0, 10);
+      const pnl = await api().getProfitLoss(monthStart, today);
+      return {
+        summary: {
+          saleTotal: pnl.income,
+          purchaseTotal: pnl.costs,
+          expenseTotal: pnl.expenses,
+          profitEstimate: pnl.result,
+          supplierDue: (await api().listSuppliers()).reduce((s, x) => s + Number(x.outstandingDue ?? 0), 0),
+        },
+        profitLoss: pnl,
+      };
+    },
+
+    async listSales(limit = 3000) {
       const rows = await api().listInvoices(limit);
       return rows.map((r) => ({
         id: r.id,
@@ -207,11 +307,6 @@ export function createOfflinePort(): DataPort {
         isSynced: r.isSynced,
         customerName: r.customerPayload?.name,
       }));
-    },
-
-    async getReports() {
-      const summary = await api().getSalesReportSummary();
-      return { ...summary };
     },
   };
 }

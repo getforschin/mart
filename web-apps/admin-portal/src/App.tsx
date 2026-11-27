@@ -26,7 +26,7 @@ export default function App(): JSX.Element {
 
   return (
     <MartAppProvider port={port}>
-      <AppShell brand="Mart Admin" initialModule="dashboard" />
+      <AppShell brand="Mart Admin" initialModule="billing" />
     </MartAppProvider>
   );
 }

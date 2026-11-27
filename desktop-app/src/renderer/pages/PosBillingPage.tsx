@@ -60,15 +60,91 @@ export function PosBillingPage({ session, onLogout, embedded = false }: PosBilli
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'F2' || event.key === 'F3') {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable);
+
+      if (event.key === 'F2') {
         event.preventDefault();
         inputRef.current?.focus();
         inputRef.current?.select();
+        return;
+      }
+      if (event.key === 'F3') {
+        event.preventDefault();
+        customerInputRef.current?.focus();
+        customerInputRef.current?.select();
+        return;
+      }
+      if (event.key === 'F4') {
+        event.preventDefault();
+        const lineId = billing.selectedLineId ?? billing.cartItems[billing.cartItems.length - 1]?.lineId;
+        if (!lineId) return;
+        const raw = window.prompt('Line discount %', '0');
+        if (raw == null) return;
+        billing.updateLineDiscountPercent(lineId, Number(raw));
+        return;
+      }
+      if (event.key === 'F6') {
+        event.preventDefault();
+        void billing.saveInvoice(InvoiceStatus.DRAFT);
+        return;
+      }
+      if (event.key === 'F8' || event.key === 'F12') {
+        event.preventDefault();
+        void billing.saveInvoice(InvoiceStatus.COMPLETED);
+        return;
+      }
+      if (event.key === '?' && !typing) {
+        event.preventDefault();
+        window.alert(
+          [
+            'F2 Search / barcode',
+            'F3 Customer',
+            'F4 Line discount %',
+            'F6 Hold draft',
+            'F8 / F12 Pay & print',
+            '+ / − Quantity',
+            'Delete Remove line',
+            'Esc Clear / close',
+          ].join('\n'),
+        );
+        return;
+      }
+      if (typing) return;
+      if (event.key === '+' || event.key === '=') {
+        event.preventDefault();
+        billing.bumpSelectedQuantity(1);
+      } else if (event.key === '-' || event.key === '_') {
+        event.preventDefault();
+        billing.bumpSelectedQuantity(-1);
+      } else if (event.key === 'Delete') {
+        event.preventDefault();
+        const lineId = billing.selectedLineId ?? billing.cartItems[billing.cartItems.length - 1]?.lineId;
+        if (lineId) billing.removeLine(lineId);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        if (billing.lotSelection) billing.cancelLotSelection();
+        else if (confirm('Clear current bill?')) billing.clearCart();
+      } else if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        const idx = billing.cartItems.findIndex((i) => i.lineId === billing.selectedLineId);
+        const next = billing.cartItems[Math.min(billing.cartItems.length - 1, Math.max(0, idx + 1))];
+        if (next) billing.setSelectedLineId(next.lineId);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        const idx = billing.cartItems.findIndex((i) => i.lineId === billing.selectedLineId);
+        const next = billing.cartItems[Math.max(0, idx <= 0 ? 0 : idx - 1)];
+        if (next) billing.setSelectedLineId(next.lineId);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [billing]);
 
   const runSearch = (value: string): void => {
     if (searchTimer.current !== null) {
@@ -252,8 +328,13 @@ export function PosBillingPage({ session, onLogout, embedded = false }: PosBilli
       )}
 
       <div className="shortcut-bar">
-        <span>F2 / F3 Item search or barcode</span>
-        <span>Customer: type mobile or name → Enter</span>
+        <span>F2 Search</span>
+        <span>F3 Customer</span>
+        <span>F4 Disc%</span>
+        <span>F6 Hold</span>
+        <span>F8/F12 Pay</span>
+        <span>+/− Qty</span>
+        <span>? Help</span>
         <span className={`status-pill ${billing.isOnline ? 'online' : 'offline'}`}>
           {billing.isOnline ? 'Online' : 'Offline'}
         </span>
@@ -469,7 +550,11 @@ export function PosBillingPage({ session, onLogout, embedded = false }: PosBilli
                   </tr>
                 ) : (
                   billing.cartItems.map((item, index) => (
-                    <tr key={item.lineId}>
+                    <tr
+                      key={item.lineId}
+                      className={billing.selectedLineId === item.lineId ? 'cart-row--selected' : undefined}
+                      onClick={() => billing.setSelectedLineId(item.lineId)}
+                    >
                       <td>{index + 1}</td>
                       <td>{item.barcode || item.productSku}</td>
                       <td>{item.productName}</td>
@@ -530,14 +615,6 @@ export function PosBillingPage({ session, onLogout, embedded = false }: PosBilli
         <aside className="billing-right">
           <div className="summary-card">
             <label>
-              Apply Coupon
-              <input
-                value={billing.couponCode}
-                onChange={(e) => billing.setCouponCode(e.target.value)}
-                placeholder="Coupon code"
-              />
-            </label>
-            <label>
               Bill Discount %
               <input
                 type="number"
@@ -547,15 +624,16 @@ export function PosBillingPage({ session, onLogout, embedded = false }: PosBilli
                 onChange={(e) => billing.setBillDiscountPercent(Number(e.target.value))}
               />
             </label>
-            <label>
-              Redeem Amount
-              <input
-                type="number"
-                min={0}
-                value={billing.redeemAmount}
-                onChange={(e) => billing.setRedeemAmount(Number(e.target.value))}
-              />
-            </label>
+            {billing.saleType === SaleType.RETURN ? (
+              <label>
+                Original Invoice ID
+                <input
+                  value={billing.returnOfInvoiceId ?? ''}
+                  onChange={(e) => billing.setReturnOfInvoiceId(e.target.value.trim() || null)}
+                  placeholder="Optional — marks original RETURNED"
+                />
+              </label>
+            ) : null}
 
             <dl className="summary-lines">
               <div>
@@ -597,6 +675,25 @@ export function PosBillingPage({ session, onLogout, embedded = false }: PosBilli
                 </button>
               ))}
             </div>
+
+            {billing.paymentChannel === PaymentChannel.CASH &&
+            billing.saleType !== SaleType.CREDIT_SALE &&
+            billing.saleType !== SaleType.RETURN ? (
+              <label>
+                Cash tendered
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={billing.amountTendered || ''}
+                  onChange={(e) => billing.setAmountTendered(Number(e.target.value) || 0)}
+                  placeholder={billing.totals.netPay.toFixed(2)}
+                />
+              </label>
+            ) : null}
+            {billing.paymentChannel === PaymentChannel.CASH && billing.totals.changeDue > 0 ? (
+              <p className="last-invoice">Change due: ₹{billing.totals.changeDue.toFixed(2)}</p>
+            ) : null}
 
             <button
               type="button"

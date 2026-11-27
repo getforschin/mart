@@ -125,7 +125,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     'pos:listInvoices',
     wrapHandler((_event: IpcMainInvokeEvent, limit?: number): LocalOrderInvoice[] => {
-      return posDatabaseService.listInvoices(typeof limit === 'number' ? limit : 100);
+      return posDatabaseService.listInvoices(typeof limit === 'number' ? limit : 3000);
     }),
   );
 
@@ -233,6 +233,101 @@ export function registerIpcHandlers(): void {
     'pos:correctStock',
     wrapHandler((_event: IpcMainInvokeEvent, input: Parameters<typeof posDatabaseService.correctStockLocal>[0]) => {
       posDatabaseService.correctStockLocal(input);
+    }),
+  );
+
+  ipcMain.handle(
+    'pos:paySupplier',
+    wrapHandler((_event: IpcMainInvokeEvent, input: Parameters<typeof posDatabaseService.paySupplierLocal>[0]) =>
+      posDatabaseService.paySupplierLocal(input),
+    ),
+  );
+  ipcMain.handle(
+    'pos:createExpense',
+    wrapHandler((_event: IpcMainInvokeEvent, input: Parameters<typeof posDatabaseService.createExpenseLocal>[0]) =>
+      posDatabaseService.createExpenseLocal(input),
+    ),
+  );
+  ipcMain.handle(
+    'pos:listExpenses',
+    wrapHandler((_event: IpcMainInvokeEvent, from?: string, to?: string) =>
+      posDatabaseService.listExpensesLocal(from, to),
+    ),
+  );
+  ipcMain.handle(
+    'pos:listExpenseSchedules',
+    wrapHandler(() => posDatabaseService.listExpenseSchedulesLocal()),
+  );
+  ipcMain.handle(
+    'pos:upsertExpenseSchedule',
+    wrapHandler(
+      (_event: IpcMainInvokeEvent, input: Parameters<typeof posDatabaseService.upsertExpenseScheduleLocal>[0]) =>
+        posDatabaseService.upsertExpenseScheduleLocal(input),
+    ),
+  );
+  ipcMain.handle(
+    'pos:runExpenseSchedules',
+    wrapHandler((_event: IpcMainInvokeEvent, asOf?: string) =>
+      posDatabaseService.runExpenseSchedulesLocal(asOf),
+    ),
+  );
+  ipcMain.handle(
+    'pos:getProfitLoss',
+    wrapHandler((_event: IpcMainInvokeEvent, from: string, to: string) =>
+      posDatabaseService.getLocalProfitLoss(from, to),
+    ),
+  );
+
+  ipcMain.handle(
+    'pos:startStocktake',
+    wrapHandler((_event: IpcMainInvokeEvent, remark?: string) =>
+      posDatabaseService.startStocktake(remark),
+    ),
+  );
+  ipcMain.handle(
+    'pos:listStocktakeSessions',
+    wrapHandler(() => posDatabaseService.listStocktakeSessions()),
+  );
+  ipcMain.handle(
+    'pos:getStocktakeSession',
+    wrapHandler((_event: IpcMainInvokeEvent, sessionId: string) =>
+      posDatabaseService.getStocktakeSession(sessionId),
+    ),
+  );
+  ipcMain.handle(
+    'pos:updateStocktakeCount',
+    wrapHandler(
+      (
+        _event: IpcMainInvokeEvent,
+        input: { sessionId: string; lotId: string; countedQty: number; remark?: string },
+      ) => posDatabaseService.updateStocktakeCount(input),
+    ),
+  );
+  ipcMain.handle(
+    'pos:commitStocktake',
+    wrapHandler((_event: IpcMainInvokeEvent, sessionId: string) =>
+      posDatabaseService.commitStocktake(sessionId),
+    ),
+  );
+  ipcMain.handle(
+    'pos:cancelStocktake',
+    wrapHandler((_event: IpcMainInvokeEvent, sessionId: string) =>
+      posDatabaseService.cancelStocktake(sessionId),
+    ),
+  );
+  ipcMain.handle(
+    'pos:getDashboardSnapshot',
+    wrapHandler(() => posDatabaseService.getDashboardSnapshot()),
+  );
+  ipcMain.handle(
+    'pos:printReceipt',
+    wrapHandler(async (_event: IpcMainInvokeEvent, invoiceId: string) => {
+      const { buildReceiptHtml, printReceiptHtml } = await import('../receipt/print-receipt');
+      const invoice = posDatabaseService.getInvoice(invoiceId);
+      const config = posDatabaseService.getConfig();
+      const html = buildReceiptHtml(invoice, config);
+      const printed = await printReceiptHtml(html);
+      return { printed };
     }),
   );
 

@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Post, Query, Route, Security, SuccessResponse, Tags } from 'tsoa';
+import { Body, Controller, Get, Path, Post, Query, Route, Security, SuccessResponse, Tags } from 'tsoa';
 import { erpService } from '../core/services/erp.service';
-import { StockMovement, StockTransfer } from '../models';
+import { StockMovement, StockTransfer, StocktakeSession } from '../models';
 
 @Route('api/v1/stock')
 @Tags('Stock')
@@ -15,6 +15,62 @@ export class StockController extends Controller {
   @Security('tenantHeader')
   public async movements(@Query() tenantId: string): Promise<StockMovement[]> {
     return erpService.listMovements(tenantId);
+  }
+
+  @Get('stocktakes')
+  @Security('tenantHeader')
+  public async listStocktakes(
+    @Query() tenantId: string,
+    @Query() facilityId?: string,
+  ): Promise<StocktakeSession[]> {
+    return erpService.listStocktakes(tenantId, facilityId);
+  }
+
+  @Get('stocktakes/{sessionId}')
+  @Security('tenantHeader')
+  public async getStocktake(
+    @Query() tenantId: string,
+    @Path() sessionId: string,
+  ): Promise<StocktakeSession> {
+    return erpService.getStocktake(tenantId, sessionId);
+  }
+
+  @Post('stocktakes')
+  @Security('tenantHeader')
+  @SuccessResponse(201, 'Created')
+  public async startStocktake(
+    @Query() tenantId: string,
+    @Body() body: { facilityId: string; startedBy: string; remark?: string },
+  ): Promise<StocktakeSession> {
+    this.setStatus(201);
+    return erpService.startStocktake(tenantId, body);
+  }
+
+  @Post('stocktakes/count')
+  @Security('tenantHeader')
+  public async updateStocktakeCount(
+    @Query() tenantId: string,
+    @Body() body: { sessionId: string; lotId: string; countedQty: number; remark?: string },
+  ): Promise<StocktakeSession> {
+    return erpService.updateStocktakeCount(tenantId, body);
+  }
+
+  @Post('stocktakes/{sessionId}/commit')
+  @Security('tenantHeader')
+  public async commitStocktake(
+    @Query() tenantId: string,
+    @Path() sessionId: string,
+  ): Promise<StocktakeSession> {
+    return erpService.commitStocktake(tenantId, sessionId);
+  }
+
+  @Post('stocktakes/{sessionId}/cancel')
+  @Security('tenantHeader')
+  public async cancelStocktake(
+    @Query() tenantId: string,
+    @Path() sessionId: string,
+  ): Promise<StocktakeSession> {
+    return erpService.cancelStocktake(tenantId, sessionId);
   }
 
   @Post('dump')

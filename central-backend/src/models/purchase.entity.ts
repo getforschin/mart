@@ -7,7 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { GstMode, PurchaseStatus } from './enums';
+import { GstMode, PurchasePaymentStatus, PurchaseStatus } from './enums';
 import { PurchaseItem } from './purchase-item.entity';
 
 @Entity('purchases')
@@ -52,6 +52,18 @@ export class Purchase {
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   grandTotal!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  paidAmount!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  dueAmount!: number;
+
+  @Column({ type: 'enum', enum: PurchasePaymentStatus, default: PurchasePaymentStatus.UNPAID })
+  paymentStatus!: PurchasePaymentStatus;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  paymentMode!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
